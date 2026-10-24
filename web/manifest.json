@@ -1,13 +1,23 @@
 {
-    "name": "keep_in_mind",
-    "short_name": "keep_in_mind",
+    "name": "Keep in Mind — Share to Self",
+    "short_name": "Keep in Mind",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#3F51B5",
+    "theme_color": "#3F51B5",
+    "description": "Salva link, testi, immagini e file in memoria locale con la massima privacy.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
+    "share_target": {
+        "action": "/",
+        "method": "GET",
+        "enctype": "application/x-www-form-urlencoded",
+        "params": {
+            "title": "title",
+            "text": "text",
+            "url": "url"
+        }
+    },
     "icons": [
         {
             "src": "icons/Icon-192.png",
