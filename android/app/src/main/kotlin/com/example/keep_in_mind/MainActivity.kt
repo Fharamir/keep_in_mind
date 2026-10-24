@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.widget.Toast
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -22,6 +23,16 @@ class MainActivity : FlutterActivity() {
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Se l'app è stata aperta tramite Share Intent, elaboriamo in background,
+        // mostriamo il Toast e chiudiamo l'Activity PRIMA di chiamare super.onCreate()
+        // ed evitare qualsiasi inizializzazione di FlutterView/interfaccia grafica.
+        if (isShareIntent(intent)) {
+            super.onCreate(savedInstanceState)
+            handleShareIntentDirectly(intent)
+            finish()
+            return
+        }
+
         super.onCreate(savedInstanceState)
         initialPayload = extractPayloadFromIntent(intent)
     }
@@ -29,9 +40,32 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        
+        if (isShareIntent(intent)) {
+            handleShareIntentDirectly(intent)
+            finish()
+            return
+        }
+
         val payload = extractPayloadFromIntent(intent)
         if (payload != null) {
             eventSink?.success(payload)
+        }
+    }
+
+    private fun isShareIntent(intent: Intent?): Boolean {
+        if (intent == null) return false
+        val action = intent.action
+        return action == Intent.ACTION_SEND || action == Intent.ACTION_SEND_MULTIPLE
+    }
+
+    private fun handleShareIntentDirectly(intent: Intent) {
+        val payload = extractPayloadFromIntent(intent) ?: return
+        try {
+            savePayloadDirectly(payload)
+            Toast.makeText(applicationContext, "Salvato in Keep in Mind", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, "Errore durante il salvataggio", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -213,4 +247,109 @@ class MainActivity : FlutterActivity() {
         }
     }
 }
+    private fun savePayloadDirectly(payload: Map<String, Any?>) {
+        try {
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val itemsJson = prefs.getString("flutter.kim_memory_items_v1", "[]") ?: "[]"
+            
+            val jsonArray = org.json.JSONArray(itemsJson)
+            
+            val itemsList = payload["items"]
+            if (itemsList is List<*>) {
+                for (itemMap in itemsList) {
+                    if (itemMap is Map<*, *>) {
+                        val singleJson = convertMapToJsonObject(itemMap as Map<String, Any?>)
+                        jsonArray.put(0, singleJson) // inserisci in cima (index 0)
+                    }
+                }
+            } else {
+                val singleJson = convertMapToJsonObject(payload)
+                jsonArray.put(0, singleJson)
+            }
+
+            prefs.edit().putString("flutter.kim_memory_items_v1", jsonArray.toString()).apply()
+
+            // Aggiorna anche il widget se presente
+            val widgetConfigJson = prefs.getString("flutter.kim_widget_config_v1", null)
+            var maxItems = 3
+            if (widgetConfigJson != null) {
+                try {
+                    val configObj = org.json.JSONObject(widgetConfigJson)
+                    maxItems = configObj.optInt("maxItems", 3)
+                } catch (_: Exception) {}
+            }
+
+            val widgetPayloadObj = org.json.JSONObject()
+            widgetPayloadObj.put("maxItems", maxItems)
+            widgetPayloadObj.put("prioritizePinned", true)
+            
+            val widgetItemsArray = org.json.JSONArray()
+            val limit = jsonArray.length().coerceAtMost(maxItems)
+            for (i in 0 until limit) {
+                widgetItemsArray.put(jsonArray.getJSONObject(i))
+            }
+            widgetPayloadObj.put("items", widgetItemsArray)
+
+            val widgetPrefs = getSharedPreferences(KeepInMindWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
+            widgetPrefs.edit().putString(KeepInMindWidgetProvider.KEY_PAYLOAD, widgetPayloadObj.toString()).apply()
+            KeepInMindWidgetProvider.updateAllWidgets(applicationContext)
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun convertMapToJsonObject(map: Map<String, Any?>): org.json.JSONObject {
+        val json = org.json.JSONObject()
+        val id = java.util.UUID.randomUUID().toString()
+        val createdAt = java.time.Instant.now().toString()
+        
+        json.put("id", id)
+        json.put("createdAt", createdAt)
+        json.put("isPinned", false)
+        
+        val text = map["text"] as? String ?: ""
+        val subject = map["subject"] as? String ?: ""
+        val filePath = map["filePath"] as? String
+        val fileName = map["fileName"] as? String
+        val mimeType = map["mimeType"] as? String
+        val fileSizeBytes = map["fileSizeBytes"] as? Number
+        val source = map["source"] as? String ?: "Share to Self"
+        
+        json.put("source", source)
+        
+        if (filePath != null && filePath.isNotEmpty()) {
+            val isImg = (mimeType ?: "").lowercase().startsWith("image/") || 
+                        (fileName ?: "").lowercase().let { it.endsWith(".jpg") || it.endsWith(".png") || it.endsWith(".jpeg") || it.endsWith(".webp") }
+            json.put("type", if (isImg) "image" else "file")
+            json.put("filePath", filePath)
+            json.put("fileName", fileName)
+            json.put("mimeType", mimeType)
+            if (fileSizeBytes != null) json.put("fileSizeBytes", fileSizeBytes.toLong())
+            
+            val resolvedTitle = if (subject.isNotEmpty()) subject else (if (text.isNotEmpty()) text else (fileName ?: "Allegato"))
+            json.put("title", resolvedTitle)
+            json.put("content", text)
+            
+            val tagsArray = org.json.JSONArray()
+            tagsArray.put(if (isImg) "immagine" else "file")
+            json.put("tags", tagsArray)
+        } else {
+            // Text or Link
+            val isUrl = text.startsWith("http://") || text.startsWith("https://") || text.contains("://")
+            json.put("type", if (isUrl) "link" else "text")
+            json.put("title", if (subject.isNotEmpty()) subject else (if (text.length > 60) text.substring(0, 60) else text))
+            json.put("content", text)
+            if (isUrl) {
+                json.put("url", text)
+                val tagsArray = org.json.JSONArray()
+                tagsArray.put("link")
+                json.put("tags", tagsArray)
+            } else {
+                json.put("tags", org.json.JSONArray())
+            }
+        }
+        return json
+    }
+
 

@@ -97,14 +97,18 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                     for (i in 0 until count) {
                         val item = items.getJSONObject(i)
                         val id = item.optString("id", "")
-                        val typeLabel = item.optString("typeLabel", "Nota")
-                        val title = item.optString("title", "Senza titolo")
-                        val subtitle = item.optString("subtitle", "")
+                        val type = item.optString("type", "text")
+                        val icon = when (type) {
+                            "image" -> "🖼️ "
+                            "link" -> "🔗 "
+                            "file" -> "📁 "
+                            else -> "📝 "
+                        }
                         val pin = if (item.optBoolean("isPinned", false)) "📌 " else "• "
                         val display = if (subtitle.isNotEmpty() && subtitle != title) {
-                            "$pin[$typeLabel] $title — $subtitle"
+                            "$pin$icon$title — $subtitle"
                         } else {
-                            "$pin[$typeLabel] $title"
+                            "$pin$icon$title"
                         }
 
                         val rowViewId = rowIds[i]

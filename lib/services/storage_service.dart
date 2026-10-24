@@ -96,6 +96,22 @@ class StorageService extends ChangeNotifier {
     );
   }
 
+  /// Ricarica da disco eventuali nuovi elementi salvati in background dal codice nativo
+  /// (es. durante il flusso silenzioso "Share to Self").
+  Future<void> reloadFromDisk() async {
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    await prefs.reload();
+    _loadFromPrefs(seedIfFirstRun: false);
+    notifyListeners();
+    unawaited(
+      WidgetSyncService.syncWidget(
+        allItems: _items,
+        config: _widgetConfig,
+      ),
+    );
+  }
+
   void _loadFromPrefs({required bool seedIfFirstRun}) {
     final prefs = _prefs;
     if (prefs == null) return;

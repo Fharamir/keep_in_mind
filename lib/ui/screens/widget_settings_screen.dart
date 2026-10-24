@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../models/memory_item.dart';
+import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
 import '../widgets/home_widget_preview.dart';
 import 'item_detail_screen.dart';
 
-class WidgetSettingsScreen extends StatelessWidget {
+/// Vista dedicata esclusivamente alla configurazione del Widget Home Screen.
+class WidgetConfigView extends StatelessWidget {
   final StorageService storage;
+  final VoidCallback? onQuickAddTap;
 
-  const WidgetSettingsScreen({
+  const WidgetConfigView({
     super.key,
     required this.storage,
+    this.onQuickAddTap,
   });
 
   @override
@@ -24,46 +28,40 @@ class WidgetSettingsScreen extends StatelessWidget {
         final config = storage.widgetConfig;
         final widgetItems = storage.widgetItems;
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('Widget (1-5) & Privacy Locale'),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Anteprima Live del Widget',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            Text(
+              'Anteprima Live del Widget',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Ecco come appare il widget Keep in Mind sulla schermata Home del dispositivo con gli ultimi ${config.maxItems} contenuti:',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            HomeWidgetPreview(
+              items: widgetItems,
+              config: config,
+              totalCount: storage.allItems.length,
+              onQuickAddTap: onQuickAddTap,
+              onItemTap: (item) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ItemDetailScreen(
+                      item: item,
+                      storage: storage,
                     ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Ecco come appare il widget Keep in Mind sulla schermata Home del dispositivo con gli ultimi ${config.maxItems} contenuti:',
-                style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
-              ),
-              const SizedBox(height: 12),
-              HomeWidgetPreview(
-                items: widgetItems,
-                config: config,
-                totalCount: storage.allItems.length,
-                onItemTap: (item) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ItemDetailScreen(
-                        item: item,
-                        storage: storage,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              _buildConfigCard(context, scheme, config),
-              const SizedBox(height: 24),
-              _buildPrivacyAndBackupCard(context, scheme),
-            ],
-          ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+            _buildConfigCard(context, scheme, config),
+          ],
         );
       },
     );
@@ -181,6 +179,48 @@ class WidgetSettingsScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Vista dedicata alla configurazione dell'App, Esportazione/Importazione JSON e Privacy.
+class AppAndExportView extends StatelessWidget {
+  final StorageService storage;
+  final ShareIntentService? shareService;
+
+  const AppAndExportView({
+    super.key,
+    required this.storage,
+    this.shareService,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return ListenableBuilder(
+      listenable: storage,
+      builder: (context, _) {
+        final totalItems = storage.allItems.length;
+        final pinnedCount =
+            storage.allItems.where((item) => item.isPinned).length;
+        final tagsCount = storage.availableTags.length;
+
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            _buildPrivacyAndBackupCard(context, scheme),
+            const SizedBox(height: 20),
+            _buildAppStatsAndConfigCard(
+              context,
+              scheme,
+              totalItems: totalItems,
+              pinnedCount: pinnedCount,
+              tagsCount: tagsCount,
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   Widget _buildPrivacyAndBackupCard(BuildContext context, ColorScheme scheme) {
     return Card(
@@ -196,10 +236,10 @@ class WidgetSettingsScreen extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.lock_outline_rounded, color: scheme.primary),
+                Icon(Icons.ios_share_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Privacy 100% Locale & Backup',
+                  'Esporta & Ripristina Contenuti',
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -208,8 +248,7 @@ class WidgetSettingsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Keep in Mind non utilizza alcun server cloud né telemetria. '
-              'Tutti i link, testi, immagini e file risiedono esclusivamente nella memoria locale del dispositivo.',
+              'Esporta tutti i tuoi contenuti salvati in formato JSON per conservarne una copia di backup o trasferirli su un altro dispositivo.',
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
@@ -217,6 +256,19 @@ class WidgetSettingsScreen extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
+                FilledButton.icon(
+                  onPressed: () {
+                    final json = storage.exportBackupJson();
+                    SharePlus.instance.share(
+                      ShareParams(
+                        text: json,
+                        subject: 'Keep in Mind Backup Locale',
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.ios_share_rounded, size: 18),
+                  label: const Text('Esporta Contenuti'),
+                ),
                 OutlinedButton.icon(
                   onPressed: () {
                     final json = storage.exportBackupJson();
@@ -231,39 +283,178 @@ class WidgetSettingsScreen extends StatelessWidget {
                   label: const Text('Copia Backup JSON'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () {
-                    final json = storage.exportBackupJson();
-                    SharePlus.instance.share(
-                      ShareParams(
-                        text: json,
-                        subject: 'Keep in Mind Backup Locale',
-                      ),
-                    );
-                  },
-                  icon: const Icon(Icons.ios_share_rounded, size: 18),
-                  label: const Text('Esporta Backup'),
-                ),
-                OutlinedButton.icon(
                   onPressed: () => _showImportDialog(context),
                   icon: const Icon(Icons.restore_page_outlined, size: 18),
                   label: const Text('Importa JSON'),
-                ),
-                TextButton.icon(
-                  onPressed: () => _confirmClearAll(context),
-                  icon: Icon(
-                    Icons.delete_forever_outlined,
-                    size: 18,
-                    color: scheme.error,
-                  ),
-                  label: Text(
-                    'Svuota memoria locale',
-                    style: TextStyle(color: scheme.error),
-                  ),
                 ),
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildAppStatsAndConfigCard(
+    BuildContext context,
+    ColorScheme scheme, {
+    required int totalItems,
+    required int pinnedCount,
+    required int tagsCount,
+  }) {
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.settings_suggest_rounded, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Configurazione App & Memoria Locale',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatTile(
+                    scheme,
+                    label: 'Contenuti',
+                    value: '$totalItems',
+                    icon: Icons.inventory_2_outlined,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildStatTile(
+                    scheme,
+                    label: 'Fissati',
+                    value: '$pinnedCount',
+                    icon: Icons.push_pin_outlined,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildStatTile(
+                    scheme,
+                    label: 'Tag',
+                    value: '$tagsCount',
+                    icon: Icons.tag_rounded,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Keep in Mind non utilizza alcun server cloud né telemetria. '
+              'Tutti i link, testi, immagini e file risiedono esclusivamente nella memoria locale del dispositivo.',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            if (shareService != null) ...[
+              const Divider(height: 28),
+              Text(
+                'Strumenti di Test Condivisione:',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      shareService!.simulateIncomingShare(
+                        const SharedIncomingPayload(
+                          subject: 'Articolo approfondimento Flutter Local-First',
+                          text:
+                              'Articolo approfondimento Flutter Local-First https://docs.flutter.dev/platform-integration/android/install-app',
+                          source: 'Share to Self (Simulato)',
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.link_rounded, size: 16),
+                    label: const Text('Simula Share Link'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      shareService!.simulateIncomingShare(
+                        const SharedIncomingPayload(
+                          subject: 'Idea progetto Keep in Mind',
+                          text:
+                              'Ricordarsi di testare il widget sulla schermata Home con gli ultimi 1-5 contenuti salvati.',
+                          source: 'Share to Self (Simulato)',
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.notes_rounded, size: 16),
+                    label: const Text('Simula Share Nota'),
+                  ),
+                ],
+              ),
+            ],
+            const Divider(height: 28),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => _confirmClearAll(context),
+                icon: Icon(
+                  Icons.delete_forever_outlined,
+                  size: 18,
+                  color: scheme.error,
+                ),
+                label: Text(
+                  'Svuota memoria locale',
+                  style: TextStyle(color: scheme.error),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatTile(
+    ColorScheme scheme, {
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 18, color: scheme.primary),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
@@ -341,6 +532,25 @@ class WidgetSettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class WidgetSettingsScreen extends StatelessWidget {
+  final StorageService storage;
+
+  const WidgetSettingsScreen({
+    super.key,
+    required this.storage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Configura Widget (1-5)'),
+      ),
+      body: WidgetConfigView(storage: storage),
     );
   }
 }

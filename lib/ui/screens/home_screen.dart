@@ -4,7 +4,6 @@ import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
 import '../widgets/add_memory_sheet.dart';
-import '../widgets/home_widget_preview.dart';
 import '../widgets/memory_item_card.dart';
 import 'item_detail_screen.dart';
 import 'widget_settings_screen.dart';
@@ -23,22 +22,31 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   StreamSubscription<SharedIncomingPayload>? _shareSub;
-  bool _showWidgetBanner = true;
+  int _selectedNavIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _shareSub = widget.shareService.incomingStream.listen(_onIncomingPayload);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _shareSub?.cancel();
     _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      widget.storage.reloadFromDisk();
+    }
   }
 
   Future<void> _onIncomingPayload(SharedIncomingPayload payload) async {
@@ -117,14 +125,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openWidgetSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WidgetSettingsScreen(storage: widget.storage),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return _buildMainScaffold(context);
@@ -136,15 +136,23 @@ class _HomeScreenState extends State<HomeScreen> {
     return ListenableBuilder(
       listenable: widget.storage,
       builder: (context, _) {
-        final items = widget.storage.filteredItems;
-        final widgetItems = widget.storage.widgetItems;
-
         return Scaffold(
           appBar: AppBar(
             title: Row(
               children: [
-                Icon(Icons.psychology_alt_rounded, color: scheme.primary),
-                const SizedBox(width: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/logo.png',
+                    width: 28,
+                    height: 28,
+                    errorBuilder: (_, _, _) => Icon(
+                      Icons.psychology_alt_rounded,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
                 const Text(
                   'Keep in Mind',
                   style: TextStyle(fontWeight: FontWeight.w800),
@@ -177,128 +185,90 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            actions: [
-              IconButton(
-                onPressed: () {
-                  setState(() => _showWidgetBanner = !_showWidgetBanner);
-                },
-                icon: Icon(
-                  _showWidgetBanner
-                      ? Icons.widgets_rounded
-                      : Icons.widgets_outlined,
-                ),
-                tooltip: 'Mostra/Nascondi Widget (1-5)',
+          ),
+          body: IndexedStack(
+            index: _selectedNavIndex,
+            children: [
+              _buildMemoriesView(scheme),
+              WidgetConfigView(
+                storage: widget.storage,
+                onQuickAddTap: () => _openAddSheet(),
               ),
-              IconButton(
-                onPressed: _openWidgetSettings,
-                icon: const Icon(Icons.tune_rounded),
-                tooltip: 'Impostazioni Widget (1-5) & Backup Locale',
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Simula Share to Self',
-                icon: const Icon(Icons.ios_share_rounded),
-                onSelected: _handleSimulateMenu,
-                itemBuilder: (context) => const [
-                  PopupMenuItem(
-                    value: 'sim_link',
-                    child: ListTile(
-                      leading: Icon(Icons.link_rounded),
-                      title: Text('Simula Share Link dal Browser'),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                  PopupMenuItem(
-                    value: 'sim_note',
-                    child: ListTile(
-                      leading: Icon(Icons.notes_rounded),
-                      title: Text('Simula Share Testo/Appunto'),
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ],
+              AppAndExportView(
+                storage: widget.storage,
+                shareService: widget.shareService,
               ),
             ],
           ),
-          body: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (_showWidgetBanner) ...[
-                        HomeWidgetPreview(
-                          items: widgetItems,
-                          config: widget.storage.widgetConfig,
-                          totalCount: widget.storage.allItems.length,
-                          onItemTap: _openDetail,
-                          onQuickAddTap: () => _openAddSheet(),
-                          onConfigureTap: _openWidgetSettings,
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      _buildSearchAndFilters(scheme),
-                    ],
-                  ),
-                ),
-              ),
-              if (items.isEmpty)
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: _buildEmptyState(scheme),
+          floatingActionButton: _selectedNavIndex == 0
+              ? FloatingActionButton.extended(
+                  onPressed: () => _openAddSheet(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Aggiungi'),
                 )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-                  sliver: SliverList.builder(
-                    itemCount: items.length,
-                    itemBuilder: (context, index) {
-                      final item = items[index];
-                      return MemoryItemCard(
-                        item: item,
-                        onTap: () => _openDetail(item),
-                        onTogglePin: () => widget.storage.togglePin(item.id),
-                        onDelete: () => widget.storage.deleteItem(item.id),
-                        onTagTap: (tag) => widget.storage.setTagFilter(tag),
-                      );
-                    },
-                  ),
-                ),
+              : null,
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _selectedNavIndex,
+            onDestinationSelected: (index) {
+              setState(() => _selectedNavIndex = index);
+            },
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.inventory_2_outlined),
+                selectedIcon: Icon(Icons.inventory_2_rounded),
+                label: 'Contenuti',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.widgets_outlined),
+                selectedIcon: Icon(Icons.widgets_rounded),
+                label: 'Widget',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.tune_outlined),
+                selectedIcon: Icon(Icons.tune_rounded),
+                label: 'App & Esporta',
+              ),
             ],
-          ),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => _openAddSheet(),
-            icon: const Icon(Icons.add_rounded),
-            label: const Text('Keep in Mind'),
           ),
         );
       },
     );
   }
+  Widget _buildMemoriesView(ColorScheme scheme) {
+    final items = widget.storage.filteredItems;
 
-  void _handleSimulateMenu(String value) {
-    if (value == 'sim_link') {
-      widget.shareService.simulateIncomingShare(
-        const SharedIncomingPayload(
-          subject: 'Articolo approfondimento Flutter Local-First',
-          text:
-              'Articolo approfondimento Flutter Local-First https://docs.flutter.dev/platform-integration/android/install-app',
-          source: 'Share to Self (Simulato)',
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: _buildSearchAndFilters(scheme),
+          ),
         ),
-      );
-    } else if (value == 'sim_note') {
-      widget.shareService.simulateIncomingShare(
-        const SharedIncomingPayload(
-          subject: 'Idea progetto Keep in Mind',
-          text:
-              'Ricordarsi di testare il widget sulla schermata Home con gli ultimi 1-5 contenuti salvati.',
-          source: 'Share to Self (Simulato)',
-        ),
-      );
-    }
+        if (items.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _buildEmptyState(scheme),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+            sliver: SliverList.builder(
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
+                return MemoryItemCard(
+                  item: item,
+                  onTap: () => _openDetail(item),
+                  onTogglePin: () => widget.storage.togglePin(item.id),
+                  onDelete: () => widget.storage.deleteItem(item.id),
+                  onTagTap: (tag) => widget.storage.setTagFilter(tag),
+                );
+              },
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _buildSearchAndFilters(ColorScheme scheme) {
@@ -310,31 +280,58 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        TextField(
-          controller: _searchController,
-          onChanged: widget.storage.setSearchQuery,
-          decoration: InputDecoration(
-            hintText: 'Cerca nella tua memoria locale (titolo, link, #tag)...',
-            prefixIcon: const Icon(Icons.search_rounded),
-            suffixIcon: _searchController.text.isNotEmpty
-                ? IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      widget.storage.setSearchQuery('');
-                    },
-                    icon: const Icon(Icons.clear_rounded),
-                  )
-                : null,
-            filled: true,
-            fillColor: scheme.surfaceContainerLow,
-            contentPadding: const EdgeInsets.symmetric(vertical: 0),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
+        Material(
+          elevation: 2,
+          shadowColor: scheme.shadow.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+          color: scheme.surfaceContainerHigh,
+          child: TextField(
+            controller: _searchController,
+            onChanged: widget.storage.setSearchQuery,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+            decoration: InputDecoration(
+              hintText: 'Cerca nella tua memoria locale (titolo, link, #tag)...',
+              prefixIcon: Icon(
+                Icons.search_rounded,
+                size: 24,
+                color: scheme.primary,
+              ),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      onPressed: () {
+                        _searchController.clear();
+                        widget.storage.setSearchQuery('');
+                      },
+                      icon: const Icon(Icons.clear_rounded),
+                    )
+                  : null,
+              contentPadding: const EdgeInsets.symmetric(
+                vertical: 16,
+                horizontal: 16,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(
+                  color: scheme.primary.withValues(alpha: 0.25),
+                ),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(
+                  color: scheme.primary.withValues(alpha: 0.2),
+                ),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(
+                  color: scheme.primary,
+                  width: 1.8,
+                ),
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(

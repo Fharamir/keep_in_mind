@@ -22,7 +22,9 @@ class AddMemorySheet extends StatefulWidget {
 class _AddMemorySheetState extends State<AddMemorySheet> {
   late final TextEditingController _contentController;
   late final TextEditingController _titleController;
-  final TextEditingController _tagsController = TextEditingController();
+  final TextEditingController _newTagController = TextEditingController();
+  
+  final Set<String> _selectedTags = {};
 
   PlatformFile? _selectedFile;
   String? _selectedMimeType;
@@ -40,7 +42,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
   void dispose() {
     _contentController.dispose();
     _titleController.dispose();
-    _tagsController.dispose();
+    _newTagController.dispose();
     super.dispose();
   }
 
@@ -104,11 +106,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
 
     setState(() => _isSaving = true);
 
-    final tags = _tagsController.text
-        .split(RegExp(r'[,;\s]+'))
-        .map((t) => t.replaceAll('#', '').trim().toLowerCase())
-        .where((t) => t.isNotEmpty)
-        .toList();
+    final tags = _selectedTags.toList();
 
     final saved = await widget.storage.addSharedOrManualItem(
       rawText: rawText,
@@ -263,7 +261,43 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
   }
 
   Widget _buildMetadataFields(ColorScheme scheme) {
+    final availableTags = widget.storage.availableTags;
+
+    void addNewTag() {
+      // Pulisce il testo: solo caratteri alfanumerici, trattini o underscore, senza spazi e simboli strani
+      final raw = _newTagController.text.trim().toLowerCase();
+      final sanitized = raw
+          .replaceAll(RegExp(r'[^a-z0-9\-_]'), '')
+          .replaceAll(RegExp(r'[\s]+'), '');
+
+      if (sanitized.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Il tag può contenere solo lettere, numeri, "-" e "_"'),
+          ),
+        );
+        return;
+      }
+
+      if (sanitized.length > 20) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Il tag non può superare i 20 caratteri'),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _selectedTags.add(sanitized);
+        _newTagController.clear();
+      });
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         TextField(
@@ -276,22 +310,20 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         Row(
           children: [
-            Expanded(
-              child: TextField(
-                controller: _tagsController,
-                decoration: InputDecoration(
-                  labelText: 'Tag (es. lavoro, ricette, leggere)',
-                  prefixIcon: const Icon(Icons.tag_rounded, size: 18),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
+            Icon(Icons.tag_rounded, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Tag Disponibili:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(width: 10),
+            const Spacer(),
             FilterChip(
               selected: _isPinned,
               onSelected: (v) => setState(() => _isPinned = v),
@@ -302,6 +334,78 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 size: 16,
               ),
               label: const Text('Fissa'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            ...availableTags.map((tag) {
+              final isSelected = _selectedTags.contains(tag);
+              return FilterChip(
+                selected: isSelected,
+                label: Text('#$tag'),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedTags.add(tag);
+                    } else {
+                      _selectedTags.remove(tag);
+                    }
+                  });
+                },
+              );
+            }),
+            // Mostra anche i tag custom selezionati che non sono ancora negli availableTags
+            ..._selectedTags.where((tag) => !availableTags.contains(tag)).map((tag) {
+              return FilterChip(
+                selected: true,
+                label: Text('#$tag'),
+                onSelected: (selected) {
+                  setState(() {
+                    _selectedTags.remove(tag);
+                  });
+                },
+              );
+            }),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: _newTagController,
+                  maxLength: 20,
+                  onSubmitted: (_) => addNewTag(),
+                  decoration: InputDecoration(
+                    hintText: 'Crea nuovo tag...',
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 42,
+              child: OutlinedButton.icon(
+                onPressed: addNewTag,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Aggiungi'),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
