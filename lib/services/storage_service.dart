@@ -11,6 +11,7 @@ class StorageService extends ChangeNotifier {
   static const String _itemsStorageKey = 'kim_memory_items_v1';
   static const String _widgetConfigKey = 'kim_widget_config_v1';
   static const String _seededKey = 'kim_initial_seed_v1';
+  static const String _confirmDeleteKey = 'kim_confirm_delete_v1';
 
   final Uuid _uuid = const Uuid();
   SharedPreferences? _prefs;
@@ -26,6 +27,7 @@ class StorageService extends ChangeNotifier {
   MemoryItemType? _selectedTypeFilter;
   String? _selectedTagFilter;
   bool _onlyPinnedFilter = false;
+  bool _confirmBeforeDelete = true;
   bool _isLoaded = false;
 
   List<MemoryItem> get allItems => List.unmodifiable(_items);
@@ -34,20 +36,33 @@ class StorageService extends ChangeNotifier {
   MemoryItemType? get selectedTypeFilter => _selectedTypeFilter;
   String? get selectedTagFilter => _selectedTagFilter;
   bool get onlyPinnedFilter => _onlyPinnedFilter;
+  bool get confirmBeforeDelete => _confirmBeforeDelete;
   bool get isLoaded => _isLoaded;
 
   /// Restituisce gli ultimi 1-5 contenuti calcolati per il Widget Home Screen.
   List<MemoryItem> get widgetItems =>
       WidgetSyncService.selectWidgetItems(_items, _widgetConfig);
 
-  /// Restituisce tutti i tag unici presenti nella libreria locale.
+  static const List<String> defaultTags = [
+    'immagine',
+    'nota',
+    'link',
+    'audio',
+    'file',
+  ];
+  static const Set<String> _deprecatedSeedTags = {'privacy', 'locale', 'guida'};
+
+  /// Restituisce tutti i tag unici presenti nella libreria locale (inclusi i 5 tag base).
   List<String> get availableTags {
-    final tagSet = <String>{};
+    final tagSet = <String>{...defaultTags};
     for (final item in _items) {
-      tagSet.addAll(item.tags);
+      for (final tag in item.tags) {
+        if (!_deprecatedSeedTags.contains(tag)) {
+          tagSet.add(tag);
+        }
+      }
     }
-    final sorted = tagSet.toList()..sort();
-    return sorted;
+    return tagSet.toList();
   }
 
   /// Restituisce la lista filtrata e ordinata per la schermata principale.
@@ -116,6 +131,8 @@ class StorageService extends ChangeNotifier {
     final prefs = _prefs;
     if (prefs == null) return;
 
+    _confirmBeforeDelete = prefs.getBool(_confirmDeleteKey) ?? true;
+
     final rawConfig = prefs.getString(_widgetConfigKey);
     if (rawConfig != null && rawConfig.isNotEmpty) {
       try {
@@ -129,9 +146,22 @@ class StorageService extends ChangeNotifier {
     if (rawItems != null && rawItems.isNotEmpty) {
       try {
         final decoded = jsonDecode(rawItems) as List<dynamic>;
-        _items = decoded
-            .map((e) => MemoryItem.fromJson(e as Map<String, dynamic>))
-            .toList();
+        bool hadDeprecatedTags = false;
+        _items = decoded.map((e) {
+          final item = MemoryItem.fromJson(e as Map<String, dynamic>);
+          if (item.tags.any(_deprecatedSeedTags.contains)) {
+            hadDeprecatedTags = true;
+            return item.copyWith(
+              tags: item.tags
+                  .where((t) => !_deprecatedSeedTags.contains(t))
+                  .toList(),
+            );
+          }
+          return item;
+        }).toList();
+        if (hadDeprecatedTags) {
+          _saveItemsToPrefs();
+        }
       } catch (_) {
         _items = [];
       }
@@ -215,9 +245,25 @@ class StorageService extends ChangeNotifier {
   Future<void> updateItem(MemoryItem updated) async {
     final index = _items.indexWhere((e) => e.id == updated.id);
     if (index == -1) return;
+    final previous = _items[index];
+    if (previous.filePath != null &&
+        previous.filePath!.isNotEmpty &&
+        updated.filePath == null) {
+      await LocalFileHelper.deleteLocalFile(previous.filePath);
+    }
     _items[index] = updated;
     notifyListeners();
     await _saveItemsToPrefs();
+  }
+
+  Future<void> setConfirmBeforeDelete(bool value) async {
+    if (_confirmBeforeDelete == value) return;
+    _confirmBeforeDelete = value;
+    notifyListeners();
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setBool(_confirmDeleteKey, value);
+    }
   }
 
   Future<void> togglePin(String id) async {
@@ -348,7 +394,7 @@ class StorageService extends ChangeNotifier {
             'Usa il menu "Condividi" di qualsiasi app (Browser, YouTube, Foto, File Manager) e scegli "Keep in Mind" per salvare link, testi, immagini o file direttamente in locale.\nhttps://flutter.dev',
         url: 'https://flutter.dev',
         domain: 'flutter.dev',
-        tags: const ['link', 'guida', 'privacy'],
+        tags: const ['link'],
         isPinned: true,
         createdAt: now.subtract(const Duration(minutes: 5)),
         source: 'Sistema Locale',
@@ -359,7 +405,7 @@ class StorageService extends ChangeNotifier {
         title: '100% Locale & Zero Cloud',
         content:
             'Tutti i tuoi link, appunti, immagini e documenti restano esclusivamente nella memoria privata del tuo dispositivo. Nessun account, nessun server esterno, massima privacy.',
-        tags: const ['nota', 'privacy', 'locale'],
+        tags: const ['nota'],
         isPinned: false,
         createdAt: now.subtract(const Duration(minutes: 15)),
         source: 'Sistema Locale',

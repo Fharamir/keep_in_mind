@@ -357,6 +357,18 @@ class AppAndExportView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 14),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Chiedi conferma prima di eliminare'),
+              subtitle: const Text(
+                'Mostra un avviso di sicurezza quando premi sul cestino',
+              ),
+              value: storage.confirmBeforeDelete,
+              onChanged: (v) {
+                storage.setConfirmBeforeDelete(v);
+              },
+            ),
+            const SizedBox(height: 6),
             Text(
               'Keep in Mind non utilizza alcun server cloud né telemetria. '
               'Tutti i link, testi, immagini e file risiedono esclusivamente nella memoria locale del dispositivo.',

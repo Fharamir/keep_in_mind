@@ -97,6 +97,8 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                     for (i in 0 until count) {
                         val item = items.getJSONObject(i)
                         val id = item.optString("id", "")
+                        val title = item.optString("title", "Senza titolo")
+                        val subtitle = item.optString("subtitle", "")
                         val type = item.optString("type", "text")
                         val icon = when (type) {
                             "image" -> "🖼️ "

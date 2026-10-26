@@ -261,7 +261,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   item: item,
                   onTap: () => _openDetail(item),
                   onTogglePin: () => widget.storage.togglePin(item.id),
-                  onDelete: () => widget.storage.deleteItem(item.id),
+                  onDelete: () => ItemDetailScreen.confirmAndDelete(
+                    context,
+                    widget.storage,
+                    item,
+                  ),
                   onTagTap: (tag) => widget.storage.setTagFilter(tag),
                 );
               },

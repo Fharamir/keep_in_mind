@@ -1,12 +1,20 @@
 package com.example.keep_in_mind
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -18,9 +26,18 @@ class MainActivity : FlutterActivity() {
     private val shareChannelName = "com.example.keep_in_mind/share"
     private val shareStreamName = "com.example.keep_in_mind/share_stream"
     private val widgetChannelName = "com.example.keep_in_mind/widget"
+    private val mediaChannelName = "com.example.keep_in_mind/media"
 
     private var initialPayload: Map<String, Any?>? = null
     private var eventSink: EventChannel.EventSink? = null
+
+    private val reqCameraPerm = 2001
+    private val reqAudioPerm = 2002
+    private val reqImageCapture = 2003
+
+    private var pendingMediaResult: MethodChannel.Result? = null
+    private var mediaRecorder: MediaRecorder? = null
+    private var currentAudioFile: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Se l'app è stata aperta tramite Share Intent, elaboriamo in background,
@@ -109,6 +126,190 @@ class MainActivity : FlutterActivity() {
                     result.notImplemented()
                 }
             }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, mediaChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "capturePhoto" -> handleCapturePhoto(result)
+                    "startAudioRecording" -> handleStartAudioRecording(result)
+                    "stopAudioRecording" -> handleStopAudioRecording(result)
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun handleCapturePhoto(result: MethodChannel.Result) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingMediaResult = result
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.CAMERA),
+                reqCameraPerm
+            )
+            return
+        }
+        launchCameraIntent(result)
+    }
+
+    private fun launchCameraIntent(result: MethodChannel.Result) {
+        try {
+            pendingMediaResult = result
+            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            startActivityForResult(takePictureIntent, reqImageCapture)
+        } catch (e: Exception) {
+            pendingMediaResult = null
+            result.error("CAMERA_ERROR", e.message, null)
+        }
+    }
+
+    private fun handleStartAudioRecording(result: MethodChannel.Result) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            pendingMediaResult = result
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.RECORD_AUDIO),
+                reqAudioPerm
+            )
+            return
+        }
+        startRecorderNow(result)
+    }
+
+    private fun startRecorderNow(result: MethodChannel.Result) {
+        try {
+            stopAndReleaseRecorder()
+            val attachmentsDir = File(filesDir, "keep_in_mind_attachments")
+            if (!attachmentsDir.exists()) {
+                attachmentsDir.mkdirs()
+            }
+            val outFile = File(attachmentsDir, "audio_${System.currentTimeMillis()}.m4a")
+            val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(this)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+            recorder.setAudioSource(MediaRecorder.AudioSource.MIC)
+            recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            recorder.setAudioSamplingRate(44100)
+            recorder.setAudioEncodingBitRate(96000)
+            recorder.setOutputFile(outFile.absolutePath)
+            recorder.prepare()
+            recorder.start()
+
+            mediaRecorder = recorder
+            currentAudioFile = outFile
+            result.success(true)
+        } catch (e: Exception) {
+            stopAndReleaseRecorder()
+            result.error("AUDIO_ERROR", e.message, null)
+        }
+    }
+
+    private fun handleStopAudioRecording(result: MethodChannel.Result) {
+        val outFile = currentAudioFile
+        try {
+            mediaRecorder?.stop()
+        } catch (_: Exception) {
+        } finally {
+            stopAndReleaseRecorder()
+        }
+
+        if (outFile != null && outFile.exists()) {
+            result.success(
+                mapOf(
+                    "filePath" to outFile.absolutePath,
+                    "fileName" to outFile.name,
+                    "mimeType" to "audio/mp4",
+                    "fileSizeBytes" to outFile.length()
+                )
+            )
+        } else {
+            result.error("NO_AUDIO_FILE", "Nessun file audio registrato", null)
+        }
+    }
+
+    private fun stopAndReleaseRecorder() {
+        try {
+            mediaRecorder?.release()
+        } catch (_: Exception) {
+        }
+        mediaRecorder = null
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        if (requestCode == reqCameraPerm) {
+            val res = pendingMediaResult ?: return
+            pendingMediaResult = null
+            if (granted) {
+                launchCameraIntent(res)
+            } else {
+                res.error("PERMISSION_DENIED", "Permesso fotocamera negato", null)
+            }
+        } else if (requestCode == reqAudioPerm) {
+            val res = pendingMediaResult ?: return
+            pendingMediaResult = null
+            if (granted) {
+                startRecorderNow(res)
+            } else {
+                res.error("PERMISSION_DENIED", "Permesso microfono negato", null)
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == reqImageCapture) {
+            val res = pendingMediaResult ?: return
+            pendingMediaResult = null
+            if (resultCode == Activity.RESULT_OK) {
+                val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    data?.extras?.getParcelable("data", Bitmap::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    data?.extras?.getParcelable("data") as? Bitmap
+                }
+                if (bitmap != null) {
+                    try {
+                        val attachmentsDir = File(filesDir, "keep_in_mind_attachments")
+                        if (!attachmentsDir.exists()) {
+                            attachmentsDir.mkdirs()
+                        }
+                        val fileName = "foto_${System.currentTimeMillis()}.jpg"
+                        val destFile = File(attachmentsDir, fileName)
+                        FileOutputStream(destFile).use { out ->
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
+                        }
+                        res.success(
+                            mapOf(
+                                "filePath" to destFile.absolutePath,
+                                "fileName" to fileName,
+                                "mimeType" to "image/jpeg",
+                                "fileSizeBytes" to destFile.length()
+                            )
+                        )
+                    } catch (e: Exception) {
+                        res.error("SAVE_ERROR", e.message, null)
+                    }
+                } else {
+                    res.success(null)
+                }
+            } else {
+                res.success(null)
+            }
+        }
     }
 
     private fun extractPayloadFromIntent(intent: Intent?): Map<String, Any?>? {
@@ -246,7 +447,7 @@ class MainActivity : FlutterActivity() {
             )
         }
     }
-}
+
     private fun savePayloadDirectly(payload: Map<String, Any?>) {
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
@@ -258,8 +459,9 @@ class MainActivity : FlutterActivity() {
             if (itemsList is List<*>) {
                 for (itemMap in itemsList) {
                     if (itemMap is Map<*, *>) {
+                        @Suppress("UNCHECKED_CAST")
                         val singleJson = convertMapToJsonObject(itemMap as Map<String, Any?>)
-                        jsonArray.put(0, singleJson) // inserisci in cima (index 0)
+                        jsonArray.put(0, singleJson)
                     }
                 }
             } else {
@@ -269,7 +471,6 @@ class MainActivity : FlutterActivity() {
 
             prefs.edit().putString("flutter.kim_memory_items_v1", jsonArray.toString()).apply()
 
-            // Aggiorna anche il widget se presente
             val widgetConfigJson = prefs.getString("flutter.kim_widget_config_v1", null)
             var maxItems = 3
             if (widgetConfigJson != null) {
@@ -319,8 +520,12 @@ class MainActivity : FlutterActivity() {
         json.put("source", source)
         
         if (filePath != null && filePath.isNotEmpty()) {
-            val isImg = (mimeType ?: "").lowercase().startsWith("image/") || 
-                        (fileName ?: "").lowercase().let { it.endsWith(".jpg") || it.endsWith(".png") || it.endsWith(".jpeg") || it.endsWith(".webp") }
+            val lowerMime = (mimeType ?: "").lowercase()
+            val lowerName = (fileName ?: "").lowercase()
+            val isImg = lowerMime.startsWith("image/") || 
+                        lowerName.let { it.endsWith(".jpg") || it.endsWith(".png") || it.endsWith(".jpeg") || it.endsWith(".webp") }
+            val isAudio = lowerMime.startsWith("audio/") ||
+                        lowerName.let { it.endsWith(".m4a") || it.endsWith(".mp3") || it.endsWith(".wav") || it.endsWith(".aac") || it.endsWith(".ogg") }
             json.put("type", if (isImg) "image" else "file")
             json.put("filePath", filePath)
             json.put("fileName", fileName)
@@ -332,24 +537,24 @@ class MainActivity : FlutterActivity() {
             json.put("content", text)
             
             val tagsArray = org.json.JSONArray()
-            tagsArray.put(if (isImg) "immagine" else "file")
+            tagsArray.put(if (isImg) "immagine" else if (isAudio) "audio" else "file")
             json.put("tags", tagsArray)
         } else {
-            // Text or Link
             val isUrl = text.startsWith("http://") || text.startsWith("https://") || text.contains("://")
             json.put("type", if (isUrl) "link" else "text")
             json.put("title", if (subject.isNotEmpty()) subject else (if (text.length > 60) text.substring(0, 60) else text))
             json.put("content", text)
+            val tagsArray = org.json.JSONArray()
             if (isUrl) {
                 json.put("url", text)
-                val tagsArray = org.json.JSONArray()
                 tagsArray.put("link")
-                json.put("tags", tagsArray)
             } else {
-                json.put("tags", org.json.JSONArray())
+                tagsArray.put("nota")
             }
+            json.put("tags", tagsArray)
         }
         return json
     }
+}
 
 

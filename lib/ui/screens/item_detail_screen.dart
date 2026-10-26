@@ -17,6 +17,43 @@ class ItemDetailScreen extends StatefulWidget {
     required this.storage,
   });
 
+  /// Esegue la cancellazione di un contenuto chiedendo conferma all'utente
+  /// se l'impostazione [storage.confirmBeforeDelete] è attiva.
+  static Future<bool> confirmAndDelete(
+    BuildContext context,
+    StorageService storage,
+    MemoryItem item,
+  ) async {
+    if (storage.confirmBeforeDelete) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Eliminare questo contenuto?'),
+          content: Text(
+            'Vuoi eliminare definitivamente "${item.title}" dalla memoria locale?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              child: const Text('Elimina'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return false;
+    }
+
+    await storage.deleteItem(item.id);
+    return true;
+  }
+
   @override
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
 }
@@ -25,7 +62,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   late MemoryItem _current;
   late TextEditingController _titleController;
   late TextEditingController _contentController;
-  late TextEditingController _tagsController;
+  final TextEditingController _newTagController = TextEditingController();
+  late Set<String> _selectedTags;
+  bool _removeAttachment = false;
+  String? _removedAttachmentTitleBackup;
+  String? _removedAttachmentTagBackup;
   String? _textFilePreview;
   bool _isEditing = false;
 
@@ -35,7 +76,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     _current = widget.item;
     _titleController = TextEditingController(text: _current.title);
     _contentController = TextEditingController(text: _current.content);
-    _tagsController = TextEditingController(text: _current.tags.join(', '));
+    _selectedTags = Set<String>.from(_current.tags);
     _loadFilePreviewIfNeeded();
   }
 
@@ -54,30 +95,33 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   void dispose() {
     _titleController.dispose();
     _contentController.dispose();
-    _tagsController.dispose();
+    _newTagController.dispose();
     super.dispose();
   }
 
   Future<void> _saveEdits() async {
-    final tags = _tagsController.text
-        .split(RegExp(r'[,;\s]+'))
-        .map((e) => e.replaceAll('#', '').trim().toLowerCase())
-        .where((e) => e.isNotEmpty)
-        .toList();
-
+    final tags = _selectedTags.toList();
     final newContent = _contentController.text.trim();
     final extractedUrl = MemoryItem.extractFirstUrl(newContent) ?? _current.url;
     final extractedDomain = extractedUrl != null
         ? MemoryItem.extractDomain(extractedUrl)
         : _current.domain;
 
+    MemoryItemType resolvedType = _current.type;
+    if (_removeAttachment) {
+      resolvedType =
+          extractedUrl != null ? MemoryItemType.link : MemoryItemType.text;
+    }
+
     final updated = _current.copyWith(
+      type: resolvedType,
       title: _titleController.text.trim().isNotEmpty
           ? _titleController.text.trim()
           : _current.title,
       content: newContent,
       url: extractedUrl,
       domain: extractedDomain,
+      clearAttachment: _removeAttachment,
       tags: tags,
     );
 
@@ -85,10 +129,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     if (mounted) {
       setState(() {
         _current = updated;
+        _removeAttachment = false;
         _isEditing = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Modifiche salvate in locale')),
+        const SnackBar(content: Text('Modifiche salvate')),
       );
     }
   }
@@ -102,8 +147,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   Future<void> _deleteItem() async {
-    await widget.storage.deleteItem(_current.id);
-    if (mounted) {
+    final deleted = await ItemDetailScreen.confirmAndDelete(
+      context,
+      widget.storage,
+      _current,
+    );
+    if (deleted && mounted) {
       Navigator.of(context).pop();
     }
   }
@@ -388,43 +437,340 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   Widget _buildEditForm() {
+    final scheme = Theme.of(context).colorScheme;
+    final availableTags = widget.storage.availableTags;
+
+    void addNewTag() {
+      final raw = _newTagController.text.trim().toLowerCase();
+      final sanitized = raw
+          .replaceAll(RegExp(r'[^a-z0-9\-_]'), '')
+          .replaceAll(RegExp(r'[\s]+'), '');
+
+      if (sanitized.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Il tag può contenere solo lettere, numeri, "-" e "_"'),
+          ),
+        );
+        return;
+      }
+
+      if (sanitized.length > 20) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            behavior: SnackBarBehavior.floating,
+            content: Text('Il tag non può superare i 20 caratteri'),
+          ),
+        );
+        return;
+      }
+
+      setState(() {
+        _selectedTags.add(sanitized);
+        _newTagController.clear();
+      });
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
           controller: _titleController,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Titolo',
-            border: OutlineInputBorder(),
+            prefixIcon: const Icon(Icons.title_rounded, size: 18),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
         ),
         const SizedBox(height: 14),
         TextField(
           controller: _contentController,
           maxLines: 6,
-          decoration: const InputDecoration(
+          minLines: 3,
+          decoration: InputDecoration(
             labelText: 'Contenuto / Link / Appunto',
-            border: OutlineInputBorder(),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
           ),
         ),
-        const SizedBox(height: 14),
-        TextField(
-          controller: _tagsController,
-          decoration: const InputDecoration(
-            labelText: 'Tag (separati da virgola o spazio)',
-            border: OutlineInputBorder(),
-          ),
-        ),
+        _buildEditAttachmentBox(scheme),
         const SizedBox(height: 16),
+        Row(
+          children: [
+            Icon(Icons.tag_rounded, size: 18, color: scheme.primary),
+            const SizedBox(width: 8),
+            Text(
+              'Tag Disponibili:',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
+          children: [
+            ...availableTags.map((tag) {
+              final isSelected = _selectedTags.contains(tag);
+              return FilterChip(
+                selected: isSelected,
+                label: Text('#$tag'),
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedTags.add(tag);
+                    } else {
+                      _selectedTags.remove(tag);
+                    }
+                  });
+                },
+              );
+            }),
+            ..._selectedTags
+                .where((tag) => !availableTags.contains(tag))
+                .map((tag) {
+              return FilterChip(
+                selected: true,
+                label: Text('#$tag'),
+                onSelected: (_) {
+                  setState(() {
+                    _selectedTags.remove(tag);
+                  });
+                },
+              );
+            }),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: TextField(
+                  controller: _newTagController,
+                  maxLength: 20,
+                  onSubmitted: (_) => addNewTag(),
+                  decoration: InputDecoration(
+                    hintText: 'Crea nuovo tag...',
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 42,
+              child: OutlinedButton.icon(
+                onPressed: addNewTag,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('Aggiungi'),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
             onPressed: _saveEdits,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Salva modifiche in locale'),
+            label: const Text('Salva Modifiche'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  void _handleRemoveAttachmentInEdit() {
+    final mime = (_current.mimeType ?? '').toLowerCase();
+    final mediaTag = _current.type == MemoryItemType.image ||
+            mime.startsWith('image/')
+        ? 'immagine'
+        : (mime.startsWith('audio/') ? 'audio' : 'file');
+
+    final currentTitle = _titleController.text.trim();
+    final isDefaultAttachmentTitle = currentTitle == _current.fileName ||
+        currentTitle == 'Foto scattata' ||
+        currentTitle == 'Allegato' ||
+        currentTitle.startsWith('Nota vocale (');
+
+    setState(() {
+      _removeAttachment = true;
+      if (_selectedTags.contains(mediaTag)) {
+        _removedAttachmentTagBackup = mediaTag;
+        _selectedTags.remove(mediaTag);
+      }
+      if (isDefaultAttachmentTitle) {
+        _removedAttachmentTitleBackup = currentTitle;
+        final textContent = _contentController.text.trim();
+        _titleController.text = textContent.isNotEmpty
+            ? textContent.split('\n').first
+            : 'Nota veloce';
+      }
+    });
+  }
+
+  void _handleUndoRemoveAttachmentInEdit() {
+    setState(() {
+      _removeAttachment = false;
+      if (_removedAttachmentTagBackup != null) {
+        _selectedTags.add(_removedAttachmentTagBackup!);
+        _removedAttachmentTagBackup = null;
+      }
+      if (_removedAttachmentTitleBackup != null) {
+        _titleController.text = _removedAttachmentTitleBackup!;
+        _removedAttachmentTitleBackup = null;
+      }
+    });
+  }
+
+  Widget _buildEditAttachmentBox(ColorScheme scheme) {
+    final hasFileOrBase64 =
+        (_current.filePath != null && _current.filePath!.isNotEmpty) ||
+            (_current.base64Data != null && _current.base64Data!.isNotEmpty);
+
+    if (!hasFileOrBase64) return const SizedBox.shrink();
+
+    if (_removeAttachment) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: scheme.errorContainer.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 18, color: scheme.error),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Allegato rimosso (verrà eliminato al salvataggio)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+              TextButton(
+                onPressed: _handleUndoRemoveAttachmentInEdit,
+                child: const Text('Annulla'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_current.type == MemoryItemType.image) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 160),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: LocalFileHelper.buildLocalImage(
+                      filePath: _current.filePath,
+                      base64Data: _current.base64Data,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            Row(
+              children: [
+                Icon(
+                  _current.type == MemoryItemType.image
+                      ? Icons.image_rounded
+                      : (_current.mimeType ?? '').startsWith('audio/')
+                          ? Icons.mic_rounded
+                          : Icons.insert_drive_file_rounded,
+                  color: scheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _current.fileName ?? 'File allegato',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                      if (_current.formattedFileSize.isNotEmpty ||
+                          _current.mimeType != null)
+                        Text(
+                          [
+                            if (_current.mimeType != null) _current.mimeType!,
+                            if (_current.formattedFileSize.isNotEmpty)
+                              _current.formattedFileSize,
+                          ].join(' · '),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _handleRemoveAttachmentInEdit,
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    size: 18,
+                    color: scheme.error,
+                  ),
+                  label: Text(
+                    'Rimuovi',
+                    style: TextStyle(color: scheme.error),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -81,6 +81,7 @@ class MemoryItem {
     String? mimeType,
     int? fileSizeBytes,
     String? base64Data,
+    bool clearAttachment = false,
     List<String>? tags,
     bool? isPinned,
     DateTime? createdAt,
@@ -93,11 +94,12 @@ class MemoryItem {
       content: content ?? this.content,
       url: url ?? this.url,
       domain: domain ?? this.domain,
-      filePath: filePath ?? this.filePath,
-      fileName: fileName ?? this.fileName,
-      mimeType: mimeType ?? this.mimeType,
-      fileSizeBytes: fileSizeBytes ?? this.fileSizeBytes,
-      base64Data: base64Data ?? this.base64Data,
+      filePath: clearAttachment ? null : (filePath ?? this.filePath),
+      fileName: clearAttachment ? null : (fileName ?? this.fileName),
+      mimeType: clearAttachment ? null : (mimeType ?? this.mimeType),
+      fileSizeBytes:
+          clearAttachment ? null : (fileSizeBytes ?? this.fileSizeBytes),
+      base64Data: clearAttachment ? null : (base64Data ?? this.base64Data),
       tags: tags ?? this.tags,
       isPinned: isPinned ?? this.isPinned,
       createdAt: createdAt ?? this.createdAt,
@@ -184,6 +186,7 @@ class MemoryItem {
       final effectiveMime =
           (mimeType ?? _guessMimeType(fileName ?? filePath ?? '')).toLowerCase();
       final isImg = effectiveMime.startsWith('image/');
+      final isAudio = effectiveMime.startsWith('audio/');
       final resolvedFileName = (fileName != null && fileName.trim().isNotEmpty)
           ? fileName.trim()
           : _extractFileName(
@@ -195,9 +198,11 @@ class MemoryItem {
               ? _firstLine(trimmedText, maxLength: 65)
               : resolvedFileName);
 
+      final defaultMediaTag =
+          isImg ? 'immagine' : (isAudio ? 'audio' : 'file');
       final autoTags = <String>{
         ...?customTags,
-        if (isImg) 'immagine' else 'file',
+        defaultMediaTag,
       }.toList();
 
       return MemoryItem(
@@ -237,7 +242,6 @@ class MemoryItem {
       final autoTags = <String>{
         ...?customTags,
         'link',
-        if (domain != null && domain.isNotEmpty) _tagFromDomain(domain),
       }.where((t) => t.isNotEmpty).toList();
 
       return MemoryItem(
