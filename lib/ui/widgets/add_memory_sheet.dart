@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../services/storage_service.dart';
+import '../../utils/tag_helper.dart';
 
 class AddMemorySheet extends StatefulWidget {
   final StorageService storage;
@@ -588,13 +589,33 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
-          runSpacing: 4,
+          runSpacing: 6,
           children: [
-            ...availableTags.map((tag) {
+            ...{...availableTags, ..._selectedTags}.map((tag) {
               final isSelected = _selectedTags.contains(tag);
+              final color = TagVisuals.colorForTag(tag);
               return FilterChip(
                 selected: isSelected,
-                label: Text('#$tag'),
+                avatar: Icon(
+                  TagVisuals.iconForTag(tag),
+                  size: 16,
+                  color: color,
+                ),
+                label: Text(
+                  TagVisuals.formatLabel(tag),
+                  style: TextStyle(
+                    fontWeight:
+                        isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected ? color : null,
+                  ),
+                ),
+                selectedColor: color.withValues(alpha: 0.18),
+                checkmarkColor: color,
+                side: BorderSide(
+                  color: isSelected
+                      ? color
+                      : scheme.outlineVariant.withValues(alpha: 0.7),
+                ),
                 onSelected: (selected) {
                   setState(() {
                     if (selected) {
@@ -602,18 +623,6 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                     } else {
                       _selectedTags.remove(tag);
                     }
-                  });
-                },
-              );
-            }),
-            // Mostra anche i tag custom selezionati che non sono ancora negli availableTags
-            ..._selectedTags.where((tag) => !availableTags.contains(tag)).map((tag) {
-              return FilterChip(
-                selected: true,
-                label: Text('#$tag'),
-                onSelected: (selected) {
-                  setState(() {
-                    _selectedTags.remove(tag);
                   });
                 },
               );

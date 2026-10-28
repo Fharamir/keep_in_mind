@@ -335,17 +335,6 @@ class MemoryItem {
     return domain ?? url;
   }
 
-  static String _tagFromDomain(String domain) {
-    final parts = domain.split('.');
-    if (parts.isEmpty) return '';
-    final main = parts.first.toLowerCase();
-    const ignored = {'www', 'm', 'mobile', 'app'};
-    if (ignored.contains(main) && parts.length > 1) {
-      return parts[1].toLowerCase();
-    }
-    return main;
-  }
-
   static String _extractFileName(String path) {
     final normalized = path.replaceAll('\\', '/');
     final parts = normalized.split('/');
@@ -370,12 +359,14 @@ class WidgetConfig {
   final int maxItems;
   final bool prioritizePinned;
   final MemoryItemType? filterType;
+  final String? filterTag;
   final bool showTags;
 
   const WidgetConfig({
     this.maxItems = 3,
     this.prioritizePinned = true,
     this.filterType,
+    this.filterTag,
     this.showTags = true,
   });
 
@@ -384,12 +375,15 @@ class WidgetConfig {
     bool? prioritizePinned,
     MemoryItemType? filterType,
     bool clearFilterType = false,
+    String? filterTag,
+    bool clearFilterTag = false,
     bool? showTags,
   }) {
     return WidgetConfig(
       maxItems: (maxItems ?? this.maxItems).clamp(1, 5),
       prioritizePinned: prioritizePinned ?? this.prioritizePinned,
       filterType: clearFilterType ? null : (filterType ?? this.filterType),
+      filterTag: clearFilterTag ? null : (filterTag ?? this.filterTag),
       showTags: showTags ?? this.showTags,
     );
   }
@@ -399,17 +393,20 @@ class WidgetConfig {
       'maxItems': maxItems.clamp(1, 5),
       'prioritizePinned': prioritizePinned,
       'filterType': filterType?.name,
+      'filterTag': filterTag,
       'showTags': showTags,
     };
   }
 
   factory WidgetConfig.fromJson(Map<String, dynamic> json) {
     final rawFilter = json['filterType'] as String?;
+    final rawTag = json['filterTag'] as String?;
     return WidgetConfig(
       maxItems: ((json['maxItems'] as int?) ?? 3).clamp(1, 5),
       prioritizePinned: json['prioritizePinned'] as bool? ?? true,
       filterType:
           rawFilter != null ? MemoryItemType.fromString(rawFilter) : null,
+      filterTag: (rawTag != null && rawTag.isNotEmpty) ? rawTag : null,
       showTags: json['showTags'] as bool? ?? true,
     );
   }

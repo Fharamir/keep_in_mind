@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import '../models/memory_item.dart';
+import '../utils/tag_helper.dart';
 
 class WidgetSyncService {
   static const MethodChannel _channel =
@@ -15,7 +16,11 @@ class WidgetSyncService {
     final limit = config.maxItems.clamp(1, 5);
     Iterable<MemoryItem> filtered = allItems;
 
-    if (config.filterType != null) {
+    if (config.filterTag != null && config.filterTag!.isNotEmpty) {
+      filtered = filtered.where(
+        (item) => TagVisuals.itemHasTag(item, config.filterTag!),
+      );
+    } else if (config.filterType != null) {
       filtered = filtered.where((item) => item.type == config.filterType);
     }
 
@@ -58,8 +63,13 @@ class WidgetSyncService {
                   (e.content.length > 70
                       ? '${e.content.substring(0, 70)}…'
                       : e.content),
+              'filePath': e.filePath,
+              'mimeType': e.mimeType,
               'isPinned': e.isPinned,
-              'tags': e.tags.take(2).join(' · '),
+              'tags': TagVisuals.effectiveTagsForItem(e)
+                  .take(3)
+                  .map(TagVisuals.formatLabel)
+                  .join(' · '),
               'createdAt': e.createdAt.toIso8601String(),
             },
           )

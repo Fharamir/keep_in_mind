@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/memory_item.dart';
 import '../../utils/local_file_helper.dart';
+import '../../utils/tag_helper.dart';
 
 class MemoryItemCard extends StatelessWidget {
   final MemoryItem item;
@@ -21,19 +22,6 @@ class MemoryItemCard extends StatelessWidget {
     required this.onDelete,
     this.onTagTap,
   });
-
-  IconData _typeIcon(MemoryItemType type) {
-    switch (type) {
-      case MemoryItemType.link:
-        return Icons.link_rounded;
-      case MemoryItemType.text:
-        return Icons.notes_rounded;
-      case MemoryItemType.image:
-        return Icons.image_outlined;
-      case MemoryItemType.file:
-        return Icons.insert_drive_file_outlined;
-    }
-  }
 
   Color _typeColor(MemoryItemType type) {
     switch (type) {
@@ -115,46 +103,57 @@ class MemoryItemCard extends StatelessWidget {
   }
 
   Widget _buildTopRow(ColorScheme scheme, Color accent, String dateStr) {
+    final effectiveTags = TagVisuals.effectiveTagsForItem(item);
+
     return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: accent.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(_typeIcon(item.type), size: 14, color: accent),
-              const SizedBox(width: 4),
-              Text(
-                item.type.label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: accent,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (item.domain != null && item.domain!.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              item.domain!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: scheme.primary,
-              ),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: effectiveTags.map((tag) {
+                final tagColor = TagVisuals.colorForTag(tag);
+                return Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: onTagTap != null ? () => onTagTap!(tag) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: tagColor.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            TagVisuals.iconForTag(tag),
+                            size: 14,
+                            color: tagColor,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            TagVisuals.formatLabel(tag),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: tagColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
             ),
           ),
-        ],
-        const Spacer(),
+        ),
+        const SizedBox(width: 8),
         Text(
           dateStr,
           style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
@@ -251,36 +250,21 @@ class MemoryItemCard extends StatelessWidget {
   Widget _buildBottomActions(BuildContext context, ColorScheme scheme) {
     return Row(
       children: [
-        Expanded(
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: item.tags.map((tag) {
-              return InkWell(
-                borderRadius: BorderRadius.circular(8),
-                onTap: onTagTap != null ? () => onTagTap!(tag) : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.secondaryContainer.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    '#$tag',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: scheme.onSecondaryContainer,
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
+        if (item.domain != null && item.domain!.isNotEmpty)
+          Expanded(
+            child: Text(
+              item.domain!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.primary,
+              ),
+            ),
+          )
+        else
+          const Spacer(),
         if (item.url != null && item.url!.isNotEmpty)
           IconButton(
             onPressed: () => _openUrl(context, item.url!),
@@ -321,7 +305,7 @@ class MemoryItemCard extends StatelessWidget {
             size: 18,
             color: scheme.error,
           ),
-          tooltip: 'Elimina dalla memoria locale',
+          tooltip: 'Elimina dalla memoria',
           visualDensity: VisualDensity.compact,
         ),
       ],

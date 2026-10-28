@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
+import '../../utils/tag_helper.dart';
 import '../widgets/add_memory_sheet.dart';
 import '../widgets/memory_item_card.dart';
 import 'item_detail_screen.dart';
@@ -58,9 +59,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // 2. Se proviene da un tap su uno degli ultimi 1-5 elementi del Widget Home Screen
     if (payload.openItemId != null && payload.openItemId!.isNotEmpty) {
+      await widget.storage.reloadFromDisk();
       final target = widget.storage.getById(payload.openItemId!);
       if (target != null && mounted) {
-        _openDetail(target);
+        _openDetail(target, openedFromWidget: true);
       }
       return;
     }
@@ -108,18 +110,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Salvato in locale: "${created.title}"'),
+          content: Text('Salvato: "${created.title}"'),
         ),
       );
     }
   }
 
-  void _openDetail(MemoryItem item) {
+  void _openDetail(MemoryItem item, {bool openedFromWidget = false}) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ItemDetailScreen(
           item: item,
           storage: widget.storage,
+          openedFromWidget: openedFromWidget,
         ),
       ),
     );
@@ -193,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               WidgetConfigView(
                 storage: widget.storage,
                 onQuickAddTap: () => _openAddSheet(),
+                onViewAllTap: () => setState(() => _selectedNavIndex = 0),
               ),
               AppAndExportView(
                 storage: widget.storage,
@@ -294,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onChanged: widget.storage.setSearchQuery,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
-              hintText: 'Cerca nella tua memoria locale (titolo, link, #tag)...',
+              hintText: 'Cerca nei contenuti salvati (titolo, link, #tag)...',
               prefixIcon: Icon(
                 Icons.search_rounded,
                 size: 24,
@@ -342,7 +346,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               FilterChip(
                 label: const Text('Tutti'),
-                selected: selectedType == null && !onlyPinned && selectedTag == null,
+                selected: selectedType == null &&
+                    !onlyPinned &&
+                    selectedTag == null,
                 onSelected: (_) => widget.storage.resetFilters(),
               ),
               const SizedBox(width: 8),
@@ -353,51 +359,43 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onSelected: (v) => widget.storage.setOnlyPinnedFilter(v),
               ),
               const SizedBox(width: 8),
-              ...MemoryItemType.values.map((t) {
+              ...tags.map((tag) {
+                final isSelected = selectedTag == tag;
+                final color = TagVisuals.colorForTag(tag);
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: FilterChip(
-                    label: Text(t.label),
-                    selected: selectedType == t,
-                    onSelected: (v) =>
-                        widget.storage.setTypeFilter(v ? t : null),
+                    avatar: Icon(
+                      TagVisuals.iconForTag(tag),
+                      size: 16,
+                      color: color,
+                    ),
+                    label: Text(
+                      TagVisuals.formatLabel(tag),
+                      style: TextStyle(
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: isSelected ? color : null,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: color.withValues(alpha: 0.18),
+                    checkmarkColor: color,
+                    side: BorderSide(
+                      color: isSelected
+                          ? color
+                          : scheme.outlineVariant.withValues(alpha: 0.7),
+                    ),
+                    onSelected: (v) {
+                      widget.storage.setTypeFilter(null);
+                      widget.storage.setTagFilter(v ? tag : null);
+                    },
                   ),
                 );
               }),
             ],
           ),
         ),
-        if (tags.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: tags.map((tag) {
-                final isSelected = selectedTag == tag;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ActionChip(
-                    backgroundColor:
-                        isSelected ? scheme.primaryContainer : null,
-                    label: Text(
-                      '#$tag',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight:
-                            isSelected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                    onPressed: () {
-                      widget.storage
-                          .setTagFilter(isSelected ? null : tag);
-                    },
-                    visualDensity: VisualDensity.compact,
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
       ],
     );
   }

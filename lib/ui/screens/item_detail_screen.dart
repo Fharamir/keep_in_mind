@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -6,15 +8,18 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/memory_item.dart';
 import '../../services/storage_service.dart';
 import '../../utils/local_file_helper.dart';
+import '../../utils/tag_helper.dart';
 
 class ItemDetailScreen extends StatefulWidget {
   final MemoryItem item;
   final StorageService storage;
+  final bool openedFromWidget;
 
   const ItemDetailScreen({
     super.key,
     required this.item,
     required this.storage,
+    this.openedFromWidget = false,
   });
 
   /// Esegue la cancellazione di un contenuto chiedendo conferma all'utente
@@ -30,7 +35,7 @@ class ItemDetailScreen extends StatefulWidget {
         builder: (ctx) => AlertDialog(
           title: const Text('Eliminare questo contenuto?'),
           content: Text(
-            'Vuoi eliminare definitivamente "${item.title}" dalla memoria locale?',
+            'Vuoi eliminare definitivamente "${item.title}"?',
           ),
           actions: [
             TextButton(
@@ -59,6 +64,9 @@ class ItemDetailScreen extends StatefulWidget {
 }
 
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
+  static const MethodChannel _mediaChannel =
+      MethodChannel('com.example.keep_in_mind/media');
+
   late MemoryItem _current;
   late TextEditingController _titleController;
   late TextEditingController _contentController;
@@ -69,6 +77,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   String? _removedAttachmentTagBackup;
   String? _textFilePreview;
   bool _isEditing = false;
+
+  bool _isAudioPlaying = false;
+  int _audioPositionMs = 0;
+  int _audioDurationMs = 0;
+  Timer? _audioStatusTimer;
 
   @override
   void initState() {
@@ -93,10 +106,26 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   @override
   void dispose() {
+    _audioStatusTimer?.cancel();
+    _mediaChannel.invokeMethod('audioStop').ignore();
     _titleController.dispose();
     _contentController.dispose();
     _newTagController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleBackNavigation() async {
+    _audioStatusTimer?.cancel();
+    await _mediaChannel.invokeMethod('audioStop').catchError((_) => null);
+    if (!mounted) return;
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    if (widget.openedFromWidget) {
+      await _mediaChannel
+          .invokeMethod('closeToHomeScreen')
+          .catchError((_) => SystemNavigator.pop());
+    }
   }
 
   Future<void> _saveEdits() async {
@@ -153,13 +182,21 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       _current,
     );
     if (deleted && mounted) {
-      Navigator.of(context).pop();
+      await _handleBackNavigation();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return _buildScaffold(context);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _handleBackNavigation();
+        }
+      },
+      child: _buildScaffold(context),
+    );
   }
 
   Widget _buildScaffold(BuildContext context) {
@@ -169,6 +206,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          onPressed: _handleBackNavigation,
+          icon: const Icon(Icons.arrow_back_rounded),
+          tooltip: 'Indietro',
+        ),
         title: Text(_current.type.label),
         actions: [
           IconButton(
@@ -208,7 +250,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               Icon(Icons.shield_outlined, size: 15, color: scheme.primary),
               const SizedBox(width: 6),
               Text(
-                'Salvato in locale (${_current.source}) · $dateStr',
+                'Salvato (${_current.source}) · $dateStr',
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ],
@@ -232,6 +274,104 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     );
   }
 
+  bool _isAudioFile() {
+    final mime = (_current.mimeType ?? '').toLowerCase();
+    final name = (_current.fileName ?? _current.filePath ?? '').toLowerCase();
+    return mime.startsWith('audio/') ||
+        name.endsWith('.m4a') ||
+        name.endsWith('.mp3') ||
+        name.endsWith('.wav') ||
+        name.endsWith('.aac') ||
+        name.endsWith('.ogg');
+  }
+
+  bool _isVideoFile() {
+    final mime = (_current.mimeType ?? '').toLowerCase();
+    final name = (_current.fileName ?? _current.filePath ?? '').toLowerCase();
+    return mime.startsWith('video/') ||
+        name.endsWith('.mp4') ||
+        name.endsWith('.mov') ||
+        name.endsWith('.webm') ||
+        name.endsWith('.mkv');
+  }
+
+  Future<void> _toggleAudioPlayPause() async {
+    final path = _current.filePath;
+    if (path == null || path.isEmpty) return;
+
+    if (_isAudioPlaying) {
+      await _mediaChannel.invokeMethod('audioPause');
+      _audioStatusTimer?.cancel();
+      if (mounted) {
+        setState(() => _isAudioPlaying = false);
+      }
+    } else {
+      try {
+        final res = await _mediaChannel.invokeMapMethod<String, dynamic>(
+          'audioPlay',
+          {'filePath': path},
+        );
+        if (mounted && res != null) {
+          setState(() {
+            _isAudioPlaying = res['isPlaying'] as bool? ?? true;
+            _audioPositionMs = (res['positionMs'] as num?)?.toInt() ?? 0;
+            _audioDurationMs = (res['durationMs'] as num?)?.toInt() ?? 0;
+          });
+          _startAudioStatusPolling();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Impossibile riprodurre l\'audio: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _stopAudio() async {
+    _audioStatusTimer?.cancel();
+    await _mediaChannel.invokeMethod('audioStop').catchError((_) => null);
+    if (mounted) {
+      setState(() {
+        _isAudioPlaying = false;
+        _audioPositionMs = 0;
+      });
+    }
+  }
+
+  void _startAudioStatusPolling() {
+    _audioStatusTimer?.cancel();
+    _audioStatusTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) async {
+        try {
+          final res = await _mediaChannel
+              .invokeMapMethod<String, dynamic>('audioGetStatus');
+          if (!mounted || res == null) return;
+          final playing = res['isPlaying'] as bool? ?? false;
+          final pos = (res['positionMs'] as num?)?.toInt() ?? 0;
+          final dur = (res['durationMs'] as num?)?.toInt() ?? 0;
+          setState(() {
+            _isAudioPlaying = playing;
+            _audioPositionMs = pos;
+            if (dur > 0) _audioDurationMs = dur;
+          });
+          if (!playing) {
+            _audioStatusTimer?.cancel();
+          }
+        } catch (_) {}
+      },
+    );
+  }
+
+  String _formatDurationMs(int ms) {
+    final totalSec = (ms / 1000).floor().clamp(0, 86400);
+    final m = (totalSec ~/ 60).toString().padLeft(2, '0');
+    final s = (totalSec % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
   Widget _buildMediaSection(BuildContext context, ColorScheme scheme) {
     if (_current.type == MemoryItemType.image &&
         ((_current.filePath != null && _current.filePath!.isNotEmpty) ||
@@ -253,6 +393,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
 
     if (_current.type == MemoryItemType.file) {
+      if (_isAudioFile() &&
+          _current.filePath != null &&
+          _current.filePath!.isNotEmpty) {
+        return _buildAudioPlayerCard(scheme);
+      }
+
+      if (_isVideoFile() &&
+          _current.filePath != null &&
+          _current.filePath!.isNotEmpty) {
+        return _buildVideoPlayerCard(scheme);
+      }
+
       return Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(14),
@@ -294,7 +446,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             if (_current.filePath != null && _current.filePath!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                'Percorso locale: ${_current.filePath}',
+                'Percorso: ${_current.filePath}',
                 style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
               ),
             ],
@@ -311,6 +463,163 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
 
     return const SizedBox.shrink();
+  }
+
+  Widget _buildAudioPlayerCard(ColorScheme scheme) {
+    final maxMs = _audioDurationMs > 0 ? _audioDurationMs : 1;
+    final currentMs = _audioPositionMs.clamp(0, maxMs);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.65),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: Colors.deepOrangeAccent.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: FilledButton(
+                  onPressed: _toggleAudioPlayPause,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.deepOrangeAccent,
+                    padding: EdgeInsets.zero,
+                    shape: const CircleBorder(),
+                  ),
+                  child: Icon(
+                    _isAudioPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                    color: Colors.white,
+                    size: 28,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _current.fileName ?? 'Registrazione Audio',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_formatDurationMs(currentMs)} / ${_formatDurationMs(_audioDurationMs)}'
+                      '${_current.formattedFileSize.isNotEmpty ? " · ${_current.formattedFileSize}" : ""}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_isAudioPlaying || _audioPositionMs > 0)
+                IconButton(
+                  onPressed: _stopAudio,
+                  icon: const Icon(Icons.stop_rounded),
+                  tooltip: 'Stop',
+                ),
+            ],
+          ),
+          Slider(
+            value: currentMs.toDouble(),
+            min: 0,
+            max: maxMs.toDouble(),
+            activeColor: Colors.deepOrangeAccent,
+            onChanged: _audioDurationMs > 0
+                ? (val) {
+                    final target = val.round();
+                    setState(() => _audioPositionMs = target);
+                    _mediaChannel.invokeMethod(
+                      'audioSeek',
+                      {'positionMs': target},
+                    );
+                  }
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVideoPlayerCard(ColorScheme scheme) {
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isAndroid)
+            SizedBox(
+              height: 240,
+              width: double.infinity,
+              child: AndroidView(
+                viewType: 'keep_in_mind_video_view',
+                creationParams: {'filePath': _current.filePath},
+                creationParamsCodec: const StandardMessageCodec(),
+              ),
+            )
+          else
+            Container(
+              height: 180,
+              width: double.infinity,
+              color: Colors.black87,
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.videocam_rounded,
+                color: Colors.white70,
+                size: 48,
+              ),
+            ),
+          Container(
+            width: double.infinity,
+            color: scheme.surfaceContainerHighest,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.play_circle_outline_rounded, color: scheme.primary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_current.fileName ?? "Video allegato"} (tocca il video per i controlli)',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildContentAndActions(BuildContext context, ColorScheme scheme) {
@@ -387,18 +696,38 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           ),
           const SizedBox(height: 16),
         ],
-        if (_current.tags.isNotEmpty) ...[
+        if (TagVisuals.effectiveTagsForItem(_current).isNotEmpty) ...[
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _current.tags
-                .map(
-                  (t) => Chip(
-                    label: Text('#$t'),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                )
-                .toList(),
+            children: TagVisuals.effectiveTagsForItem(_current).map((t) {
+              final tagColor = TagVisuals.colorForTag(t);
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
+                decoration: BoxDecoration(
+                  color: tagColor.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(TagVisuals.iconForTag(t), size: 15, color: tagColor),
+                    const SizedBox(width: 5),
+                    Text(
+                      TagVisuals.formatLabel(t),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: tagColor,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 20),
         ],
@@ -516,13 +845,33 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
-          runSpacing: 4,
+          runSpacing: 6,
           children: [
-            ...availableTags.map((tag) {
+            ...{...availableTags, ..._selectedTags}.map((tag) {
               final isSelected = _selectedTags.contains(tag);
+              final color = TagVisuals.colorForTag(tag);
               return FilterChip(
                 selected: isSelected,
-                label: Text('#$tag'),
+                avatar: Icon(
+                  TagVisuals.iconForTag(tag),
+                  size: 16,
+                  color: color,
+                ),
+                label: Text(
+                  TagVisuals.formatLabel(tag),
+                  style: TextStyle(
+                    fontWeight:
+                        isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected ? color : null,
+                  ),
+                ),
+                selectedColor: color.withValues(alpha: 0.18),
+                checkmarkColor: color,
+                side: BorderSide(
+                  color: isSelected
+                      ? color
+                      : scheme.outlineVariant.withValues(alpha: 0.7),
+                ),
                 onSelected: (selected) {
                   setState(() {
                     if (selected) {
@@ -530,19 +879,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     } else {
                       _selectedTags.remove(tag);
                     }
-                  });
-                },
-              );
-            }),
-            ..._selectedTags
-                .where((tag) => !availableTags.contains(tag))
-                .map((tag) {
-              return FilterChip(
-                selected: true,
-                label: Text('#$tag'),
-                onSelected: (_) {
-                  setState(() {
-                    _selectedTags.remove(tag);
                   });
                 },
               );

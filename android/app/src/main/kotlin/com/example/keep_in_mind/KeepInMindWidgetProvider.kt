@@ -6,10 +6,17 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.view.View
 import android.widget.RemoteViews
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class KeepInMindWidgetProvider : AppWidgetProvider() {
 
@@ -53,10 +60,10 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
             val openAppIntent = Intent(context, MainActivity::class.java).apply {
                 this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            views.setOnClickPendingIntent(
-                R.id.widget_title,
-                PendingIntent.getActivity(context, 0, openAppIntent, flags)
-            )
+            val openAppPending = PendingIntent.getActivity(context, 0, openAppIntent, flags)
+            views.setOnClickPendingIntent(R.id.widget_title_box, openAppPending)
+            views.setOnClickPendingIntent(R.id.widget_logo, openAppPending)
+            views.setOnClickPendingIntent(R.id.widget_view_all_btn, openAppPending)
 
             val quickAddIntent = Intent(context, MainActivity::class.java).apply {
                 action = ACTION_QUICK_ADD
@@ -67,18 +74,12 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 PendingIntent.getActivity(context, 999, quickAddIntent, flags)
             )
 
-            val rowIds = intArrayOf(
-                R.id.widget_item_1,
-                R.id.widget_item_2,
-                R.id.widget_item_3,
-                R.id.widget_item_4,
-                R.id.widget_item_5
-            )
-            for (rowId in rowIds) views.setViewVisibility(rowId, View.GONE)
+            views.removeAllViews(R.id.widget_rows_container)
 
             if (rawJson.isNullOrEmpty()) {
                 views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
-                views.setTextViewText(R.id.widget_count, "0 elementi")
+                views.setTextViewText(R.id.widget_count, "Ultimi 0/3")
+                views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale · 0 salvati")
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 return
             }
@@ -88,7 +89,13 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 val maxItems = root.optInt("maxItems", 3).coerceIn(1, 5)
                 val items = root.optJSONArray("items") ?: JSONArray()
                 val count = items.length().coerceAtMost(maxItems)
+                val totalCount = root.optInt("totalCount", items.length())
+
                 views.setTextViewText(R.id.widget_count, "Ultimi $count/$maxItems")
+                views.setTextViewText(
+                    R.id.widget_total_subtitle,
+                    "Memoria locale · $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
+                )
 
                 if (count == 0) {
                     views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
@@ -96,36 +103,8 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                     views.setViewVisibility(R.id.widget_empty, View.GONE)
                     for (i in 0 until count) {
                         val item = items.getJSONObject(i)
-                        val id = item.optString("id", "")
-                        val title = item.optString("title", "Senza titolo")
-                        val subtitle = item.optString("subtitle", "")
-                        val type = item.optString("type", "text")
-                        val icon = when (type) {
-                            "image" -> "🖼️ "
-                            "link" -> "🔗 "
-                            "file" -> "📁 "
-                            else -> "📝 "
-                        }
-                        val pin = if (item.optBoolean("isPinned", false)) "📌 " else "• "
-                        val display = if (subtitle.isNotEmpty() && subtitle != title) {
-                            "$pin$icon$title — $subtitle"
-                        } else {
-                            "$pin$icon$title"
-                        }
-
-                        val rowViewId = rowIds[i]
-                        views.setViewVisibility(rowViewId, View.VISIBLE)
-                        views.setTextViewText(rowViewId, display)
-
-                        val itemIntent = Intent(context, MainActivity::class.java).apply {
-                            action = ACTION_OPEN_ITEM
-                            putExtra(EXTRA_ITEM_ID, id)
-                            this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        }
-                        views.setOnClickPendingIntent(
-                            rowViewId,
-                            PendingIntent.getActivity(context, 100 + i, itemIntent, flags)
-                        )
+                        val rowView = buildRowRemoteView(context, item, i, flags)
+                        views.addView(R.id.widget_rows_container, rowView)
                     }
                 }
             } catch (_: Exception) {
@@ -133,6 +112,163 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+
+        private fun buildRowRemoteView(
+            context: Context,
+            item: JSONObject,
+            index: Int,
+            flags: Int
+        ): RemoteViews {
+            val row = RemoteViews(context.packageName, R.layout.keep_in_mind_widget_row)
+            val id = item.optString("id", "")
+            val title = item.optString("title", "Senza titolo")
+            val isPinned = item.optBoolean("isPinned", false)
+            val type = item.optString("type", "text")
+            val mimeType = item.optString("mimeType", "").lowercase()
+            val filePath = item.optString("filePath", "")
+
+            val rawSubtitle = item.optString("subtitle", "").ifEmpty {
+                item.optString("domain", "").ifEmpty {
+                    item.optString("fileName", "").ifEmpty {
+                        item.optString("content", "")
+                    }
+                }
+            }.replace("\n", " ").trim()
+
+            val tagsDisplay = extractTagsDisplay(item, type, mimeType)
+            val dateDisplay = formatWidgetDate(item.optString("createdAt", ""))
+
+            val displayTitle = if (isPinned) "📌 $title" else title
+            row.setTextViewText(R.id.row_title, displayTitle)
+
+            if (rawSubtitle.isNotEmpty() && rawSubtitle != title) {
+                row.setViewVisibility(R.id.row_subtitle, View.VISIBLE)
+                row.setTextViewText(R.id.row_subtitle, rawSubtitle)
+            } else {
+                row.setViewVisibility(R.id.row_subtitle, View.GONE)
+            }
+
+            if (tagsDisplay.isNotEmpty()) {
+                row.setViewVisibility(R.id.row_tags, View.VISIBLE)
+                row.setTextViewText(R.id.row_tags, tagsDisplay)
+                row.setTextColor(R.id.row_tags, colorForType(type, mimeType))
+            } else {
+                row.setViewVisibility(R.id.row_tags, View.GONE)
+            }
+
+            row.setTextViewText(R.id.row_date, dateDisplay)
+
+            val bitmap = if (type == "image" || mimeType.startsWith("image/")) {
+                loadScaledBitmap(filePath, 96)
+            } else null
+
+            if (bitmap != null) {
+                row.setViewVisibility(R.id.row_img, View.VISIBLE)
+                row.setViewVisibility(R.id.row_icon, View.GONE)
+                row.setImageViewBitmap(R.id.row_img, bitmap)
+            } else {
+                row.setViewVisibility(R.id.row_img, View.GONE)
+                row.setViewVisibility(R.id.row_icon, View.VISIBLE)
+                val iconEmoji = when {
+                    type == "image" || mimeType.startsWith("image/") -> "🖼️"
+                    mimeType.startsWith("audio/") -> "🎙️"
+                    type == "link" -> "🔗"
+                    type == "file" -> "📁"
+                    else -> "📝"
+                }
+                row.setTextViewText(R.id.row_icon, iconEmoji)
+            }
+
+            val itemIntent = Intent(context, MainActivity::class.java).apply {
+                action = ACTION_OPEN_ITEM
+                putExtra(EXTRA_ITEM_ID, id)
+                this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val openPending = PendingIntent.getActivity(context, 100 + index, itemIntent, flags)
+            row.setOnClickPendingIntent(R.id.row_title, openPending)
+            row.setOnClickPendingIntent(R.id.row_subtitle, openPending)
+            row.setOnClickPendingIntent(R.id.row_tags, openPending)
+            row.setOnClickPendingIntent(R.id.row_img, openPending)
+            row.setOnClickPendingIntent(R.id.row_icon, openPending)
+
+            return row
+        }
+
+        private fun extractTagsDisplay(item: JSONObject, type: String, mimeType: String): String {
+            val rawTags = item.opt("tags")
+            if (rawTags is String && rawTags.isNotEmpty()) {
+                return rawTags.replace("#", "")
+            }
+            if (rawTags is JSONArray && rawTags.length() > 0) {
+                val list = mutableListOf<String>()
+                for (i in 0 until rawTags.length().coerceAtMost(3)) {
+                    val t = rawTags.optString(i, "").replace("#", "").trim()
+                    if (t.isNotEmpty()) {
+                        list.add(t.replaceFirstChar { it.uppercase() })
+                    }
+                }
+                if (list.isNotEmpty()) return list.joinToString(" · ")
+            }
+            return when {
+                type == "image" || mimeType.startsWith("image/") -> "Immagine"
+                mimeType.startsWith("audio/") -> "Audio"
+                type == "link" -> "Link"
+                type == "file" -> "File"
+                else -> "Nota"
+            }
+        }
+
+        private fun colorForType(type: String, mimeType: String): Int {
+            return when {
+                type == "image" || mimeType.startsWith("image/") -> Color.parseColor("#AA00FF")
+                mimeType.startsWith("audio/") -> Color.parseColor("#FF3D00")
+                type == "link" -> Color.parseColor("#2962FF")
+                type == "file" -> Color.parseColor("#00796B")
+                else -> Color.parseColor("#FF8F00")
+            }
+        }
+
+        private fun formatWidgetDate(isoString: String): String {
+            if (isoString.isEmpty()) return ""
+            return try {
+                val instant = Instant.parse(if (isoString.endsWith("Z")) isoString else "${isoString}Z")
+                val formatter = DateTimeFormatter.ofPattern("dd/MM HH:mm")
+                    .withZone(ZoneId.systemDefault())
+                formatter.format(instant)
+            } catch (_: Exception) {
+                if (isoString.length >= 16) {
+                    val m = isoString.substring(5, 7)
+                    val d = isoString.substring(8, 10)
+                    val t = isoString.substring(11, 16)
+                    "$d/$m $t"
+                } else ""
+            }
+        }
+
+        private fun loadScaledBitmap(filePath: String, maxSize: Int): Bitmap? {
+            if (filePath.isEmpty()) return null
+            return try {
+                val file = File(filePath)
+                if (!file.exists()) return null
+
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.absolutePath, bounds)
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+                var sampleSize = 1
+                while (bounds.outWidth / sampleSize > maxSize * 2 &&
+                    bounds.outHeight / sampleSize > maxSize * 2
+                ) {
+                    sampleSize *= 2
+                }
+
+                val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+                Bitmap.createScaledBitmap(decoded, maxSize, maxSize, true)
+            } catch (_: Exception) {
+                null
+            }
         }
     }
 }

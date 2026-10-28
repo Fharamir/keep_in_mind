@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/memory_item.dart';
 import '../utils/local_file_helper.dart';
+import '../utils/tag_helper.dart';
 import 'widget_sync_service.dart';
 
 class StorageService extends ChangeNotifier {
@@ -74,15 +75,17 @@ class StorageService extends ChangeNotifier {
         return false;
       }
       if (_selectedTagFilter != null &&
-          !item.tags.contains(_selectedTagFilter)) {
+          !TagVisuals.itemHasTag(item, _selectedTagFilter!)) {
         return false;
       }
       if (q.isNotEmpty) {
-        final inTitle = item.title.toLowerCase().contains(q);
-        final inContent = item.content.toLowerCase().contains(q);
-        final inDomain = (item.domain ?? '').toLowerCase().contains(q);
-        final inFile = (item.fileName ?? '').toLowerCase().contains(q);
-        final inTags = item.tags.any((t) => t.toLowerCase().contains(q));
+        final cleanQ = q.startsWith('#') ? q.substring(1) : q;
+        final inTitle = item.title.toLowerCase().contains(cleanQ);
+        final inContent = item.content.toLowerCase().contains(cleanQ);
+        final inDomain = (item.domain ?? '').toLowerCase().contains(cleanQ);
+        final inFile = (item.fileName ?? '').toLowerCase().contains(cleanQ);
+        final inTags = TagVisuals.effectiveTagsForItem(item)
+            .any((t) => t.toLowerCase().contains(cleanQ));
         return inTitle || inContent || inDomain || inFile || inTags;
       }
       return true;

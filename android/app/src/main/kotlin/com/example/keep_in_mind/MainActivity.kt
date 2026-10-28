@@ -6,19 +6,28 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.view.Gravity
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.MediaController
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.StandardMessageCodec
+import io.flutter.plugin.platform.PlatformView
+import io.flutter.plugin.platform.PlatformViewFactory
 import java.io.File
 import java.io.FileOutputStream
 
@@ -38,6 +47,8 @@ class MainActivity : FlutterActivity() {
     private var pendingMediaResult: MethodChannel.Result? = null
     private var mediaRecorder: MediaRecorder? = null
     private var currentAudioFile: File? = null
+    private var mediaPlayer: MediaPlayer? = null
+    private var currentPlayingPath: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Se l'app è stata aperta tramite Share Intent, elaboriamo in background,
@@ -133,9 +144,131 @@ class MainActivity : FlutterActivity() {
                     "capturePhoto" -> handleCapturePhoto(result)
                     "startAudioRecording" -> handleStartAudioRecording(result)
                     "stopAudioRecording" -> handleStopAudioRecording(result)
+                    "closeToHomeScreen" -> {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    }
+                    "audioPlay" -> {
+                        val path = call.argument<String>("filePath")
+                        handleAudioPlay(path, result)
+                    }
+                    "audioPause" -> {
+                        try {
+                            if (mediaPlayer?.isPlaying == true) {
+                                mediaPlayer?.pause()
+                            }
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("AUDIO_PAUSE_ERR", e.message, null)
+                        }
+                    }
+                    "audioStop" -> {
+                        stopAndReleasePlayer()
+                        result.success(true)
+                    }
+                    "audioSeek" -> {
+                        val positionMs = call.argument<Int>("positionMs") ?: 0
+                        try {
+                            mediaPlayer?.seekTo(positionMs)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("AUDIO_SEEK_ERR", e.message, null)
+                        }
+                    }
+                    "audioGetStatus" -> {
+                        try {
+                            val mp = mediaPlayer
+                            if (mp != null) {
+                                result.success(
+                                    mapOf(
+                                        "isPlaying" to mp.isPlaying,
+                                        "positionMs" to mp.currentPosition,
+                                        "durationMs" to mp.duration.coerceAtLeast(0)
+                                    )
+                                )
+                            } else {
+                                result.success(
+                                    mapOf(
+                                        "isPlaying" to false,
+                                        "positionMs" to 0,
+                                        "durationMs" to 0
+                                    )
+                                )
+                            }
+                        } catch (_: Exception) {
+                            result.success(
+                                mapOf(
+                                    "isPlaying" to false,
+                                    "positionMs" to 0,
+                                    "durationMs" to 0
+                                )
+                            )
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
+
+        flutterEngine
+            .platformViewsController
+            .registry
+            .registerViewFactory(
+                "keep_in_mind_video_view",
+                LocalVideoViewFactory()
+            )
+    }
+
+    private fun handleAudioPlay(filePath: String?, result: MethodChannel.Result) {
+        if (filePath.isNullOrEmpty()) {
+            result.error("INVALID_PATH", "Percorso audio vuoto", null)
+            return
+        }
+        try {
+            if (mediaPlayer != null && currentPlayingPath == filePath) {
+                mediaPlayer?.start()
+                result.success(
+                    mapOf(
+                        "isPlaying" to true,
+                        "positionMs" to (mediaPlayer?.currentPosition ?: 0),
+                        "durationMs" to (mediaPlayer?.duration ?: 0)
+                    )
+                )
+                return
+            }
+            stopAndReleasePlayer()
+            val mp = MediaPlayer()
+            mp.setDataSource(filePath)
+            mp.prepare()
+            mp.start()
+            mp.setOnCompletionListener {
+                it.seekTo(0)
+            }
+            mediaPlayer = mp
+            currentPlayingPath = filePath
+            result.success(
+                mapOf(
+                    "isPlaying" to true,
+                    "positionMs" to mp.currentPosition,
+                    "durationMs" to mp.duration.coerceAtLeast(0)
+                )
+            )
+        } catch (e: Exception) {
+            stopAndReleasePlayer()
+            result.error("AUDIO_PLAY_ERR", e.message, null)
+        }
+    }
+
+    private fun stopAndReleasePlayer() {
+        try {
+            mediaPlayer?.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            mediaPlayer?.release()
+        } catch (_: Exception) {
+        }
+        mediaPlayer = null
+        currentPlayingPath = null
     }
 
     private fun handleCapturePhoto(result: MethodChannel.Result) {
@@ -483,6 +616,7 @@ class MainActivity : FlutterActivity() {
             val widgetPayloadObj = org.json.JSONObject()
             widgetPayloadObj.put("maxItems", maxItems)
             widgetPayloadObj.put("prioritizePinned", true)
+            widgetPayloadObj.put("totalCount", jsonArray.length())
             
             val widgetItemsArray = org.json.JSONArray()
             val limit = jsonArray.length().coerceAtMost(maxItems)
@@ -554,6 +688,59 @@ class MainActivity : FlutterActivity() {
             json.put("tags", tagsArray)
         }
         return json
+    }
+
+    override fun onDestroy() {
+        stopAndReleasePlayer()
+        stopAndReleaseRecorder()
+        super.onDestroy()
+    }
+}
+
+class LocalVideoViewFactory : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+        @Suppress("UNCHECKED_CAST")
+        val creationParams = args as? Map<String, Any?>
+        val filePath = creationParams?.get("filePath") as? String ?: ""
+        return LocalVideoPlatformView(context, filePath)
+    }
+}
+
+class LocalVideoPlatformView(context: Context, filePath: String) : PlatformView {
+    private val container = FrameLayout(context)
+    private val videoView = VideoView(context)
+
+    init {
+        val params = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
+        )
+        videoView.layoutParams = params
+        container.addView(videoView)
+
+        if (filePath.isNotEmpty()) {
+            try {
+                val controller = MediaController(context)
+                controller.setAnchorView(videoView)
+                videoView.setMediaController(controller)
+                videoView.setVideoURI(Uri.fromFile(File(filePath)))
+                videoView.setOnPreparedListener { mp ->
+                    mp.isLooping = false
+                    videoView.seekTo(1)
+                }
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    override fun getView(): View = container
+
+    override fun dispose() {
+        try {
+            videoView.stopPlayback()
+        } catch (_: Exception) {
+        }
     }
 }
 

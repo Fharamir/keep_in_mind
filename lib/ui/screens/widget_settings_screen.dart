@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
+import '../../utils/tag_helper.dart';
 import '../widgets/home_widget_preview.dart';
 import 'item_detail_screen.dart';
 
@@ -11,11 +12,13 @@ import 'item_detail_screen.dart';
 class WidgetConfigView extends StatelessWidget {
   final StorageService storage;
   final VoidCallback? onQuickAddTap;
+  final VoidCallback? onViewAllTap;
 
   const WidgetConfigView({
     super.key,
     required this.storage,
     this.onQuickAddTap,
+    this.onViewAllTap,
   });
 
   @override
@@ -48,6 +51,7 @@ class WidgetConfigView extends StatelessWidget {
               config: config,
               totalCount: storage.allItems.length,
               onQuickAddTap: onQuickAddTap,
+              onViewAllTap: onViewAllTap,
               onItemTap: (item) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -134,17 +138,9 @@ class WidgetConfigView extends StatelessWidget {
                 );
               },
             ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Mostra tag nel Widget'),
-              value: config.showTags,
-              onChanged: (v) {
-                storage.updateWidgetConfig(config.copyWith(showTags: v));
-              },
-            ),
             const SizedBox(height: 8),
             const Text(
-              'Filtra tipo di contenuto nel Widget:',
+              'Filtra per Tag nel Widget:',
               style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
@@ -154,20 +150,49 @@ class WidgetConfigView extends StatelessWidget {
               children: [
                 ChoiceChip(
                   label: const Text('Tutti'),
-                  selected: config.filterType == null,
+                  selected: config.filterTag == null &&
+                      config.filterType == null,
                   onSelected: (_) {
                     storage.updateWidgetConfig(
-                      config.copyWith(clearFilterType: true),
+                      config.copyWith(
+                        clearFilterTag: true,
+                        clearFilterType: true,
+                      ),
                     );
                   },
                 ),
-                ...MemoryItemType.values.map((t) {
+                ...storage.availableTags.map((tag) {
+                  final isSelected = config.filterTag == tag;
+                  final color = TagVisuals.colorForTag(tag);
                   return ChoiceChip(
-                    label: Text(t.label),
-                    selected: config.filterType == t,
+                    avatar: Icon(
+                      TagVisuals.iconForTag(tag),
+                      size: 16,
+                      color: color,
+                    ),
+                    label: Text(
+                      TagVisuals.formatLabel(tag),
+                      style: TextStyle(
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: isSelected ? color : null,
+                      ),
+                    ),
+                    selected: isSelected,
+                    selectedColor: color.withValues(alpha: 0.18),
+                    checkmarkColor: color,
+                    side: BorderSide(
+                      color: isSelected
+                          ? color
+                          : scheme.outlineVariant.withValues(alpha: 0.7),
+                    ),
                     onSelected: (_) {
                       storage.updateWidgetConfig(
-                        config.copyWith(filterType: t),
+                        config.copyWith(
+                          filterTag: isSelected ? null : tag,
+                          clearFilterTag: isSelected,
+                          clearFilterType: true,
+                        ),
                       );
                     },
                   );
@@ -431,7 +456,7 @@ class AppAndExportView extends StatelessWidget {
                   color: scheme.error,
                 ),
                 label: Text(
-                  'Svuota memoria locale',
+                  'Svuota contenuti salvati',
                   style: TextStyle(color: scheme.error),
                 ),
               ),
@@ -476,7 +501,7 @@ class AppAndExportView extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Importa Backup JSON Locale'),
+        title: const Text('Importa Backup JSON'),
         content: TextField(
           controller: ctrl,
           maxLines: 6,
@@ -499,7 +524,7 @@ class AppAndExportView extends StatelessWidget {
                   Navigator.of(ctx).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Importati $count nuovi elementi in locale!'),
+                      content: Text('Importati $count nuovi elementi!'),
                     ),
                   );
                 }
@@ -524,9 +549,9 @@ class AppAndExportView extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Svuotare tutta la memoria locale?'),
+        title: const Text('Svuotare tutti i contenuti salvati?'),
         content: const Text(
-          'Questa operazione eliminerà definitivamente tutti i contenuti e i file allegati salvati sul dispositivo.',
+          'Questa operazione eliminerà definitivamente tutti i contenuti e i file allegati salvati sul dispositivo da questa applicazione.',
         ),
         actions: [
           TextButton(

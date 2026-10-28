@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../models/memory_item.dart';
+import '../../utils/local_file_helper.dart';
+import '../../utils/tag_helper.dart';
 
 class HomeWidgetPreview extends StatelessWidget {
   final List<MemoryItem> items;
@@ -9,6 +11,7 @@ class HomeWidgetPreview extends StatelessWidget {
   final ValueChanged<MemoryItem>? onItemTap;
   final VoidCallback? onQuickAddTap;
   final VoidCallback? onConfigureTap;
+  final VoidCallback? onViewAllTap;
 
   const HomeWidgetPreview({
     super.key,
@@ -18,33 +21,8 @@ class HomeWidgetPreview extends StatelessWidget {
     this.onItemTap,
     this.onQuickAddTap,
     this.onConfigureTap,
+    this.onViewAllTap,
   });
-
-  IconData _iconForType(MemoryItemType type) {
-    switch (type) {
-      case MemoryItemType.link:
-        return Icons.link_rounded;
-      case MemoryItemType.text:
-        return Icons.notes_rounded;
-      case MemoryItemType.image:
-        return Icons.image_outlined;
-      case MemoryItemType.file:
-        return Icons.insert_drive_file_outlined;
-    }
-  }
-
-  Color _colorForType(MemoryItemType type) {
-    switch (type) {
-      case MemoryItemType.link:
-        return Colors.blueAccent;
-      case MemoryItemType.text:
-        return Colors.amber.shade700;
-      case MemoryItemType.image:
-        return Colors.purpleAccent;
-      case MemoryItemType.file:
-        return Colors.teal;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +82,25 @@ class HomeWidgetPreview extends StatelessWidget {
                     dateFmt,
                   ),
                 ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: onViewAllTap,
+              icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+              label: const Text(
+                'Visualizza tutto',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              style: FilledButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -112,16 +109,24 @@ class HomeWidgetPreview extends StatelessWidget {
   Widget _buildHeader(BuildContext context, ColorScheme scheme) {
     return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(7),
-          decoration: BoxDecoration(
-            color: scheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            Icons.psychology_alt_rounded,
-            size: 18,
-            color: scheme.onPrimaryContainer,
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.asset(
+            'assets/logo.png',
+            width: 32,
+            height: 32,
+            errorBuilder: (_, _, _) => Container(
+              padding: const EdgeInsets.all(7),
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.psychology_alt_rounded,
+                size: 18,
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 10),
@@ -196,10 +201,15 @@ class HomeWidgetPreview extends StatelessWidget {
     bool isLast,
     DateFormat dateFmt,
   ) {
-    final accent = _colorForType(item.type);
+    final effectiveTags = TagVisuals.effectiveTagsForItem(item);
+    final primaryTag = effectiveTags.first;
+    final accent = TagVisuals.colorForTag(primaryTag);
     final subtitle = item.domain ??
         item.fileName ??
         (item.content.replaceAll('\n', ' ').trim());
+    final hasImageThumb = item.type == MemoryItemType.image &&
+        ((item.filePath != null && item.filePath!.isNotEmpty) ||
+            (item.base64Data != null && item.base64Data!.isNotEmpty));
 
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
@@ -209,7 +219,7 @@ class HomeWidgetPreview extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
           decoration: BoxDecoration(
-            color: scheme.surface.withValues(alpha: 0.8),
+            color: scheme.surface.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: scheme.outlineVariant.withValues(alpha: 0.4),
@@ -217,15 +227,33 @@ class HomeWidgetPreview extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
+              if (hasImageThumb)
+                ClipRRect(
                   borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: LocalFileHelper.buildLocalImage(
+                      filePath: item.filePath,
+                      base64Data: item.base64Data,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    TagVisuals.iconForTag(primaryTag),
+                    size: 18,
+                    color: accent,
+                  ),
                 ),
-                child: Icon(_iconForType(item.type), size: 17, color: accent),
-              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -249,13 +277,13 @@ class HomeWidgetPreview extends StatelessWidget {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 13,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    if (subtitle.isNotEmpty)
+                    if (subtitle.isNotEmpty && subtitle != item.title)
                       Text(
                         subtitle,
                         maxLines: 1,
@@ -265,17 +293,20 @@ class HomeWidgetPreview extends StatelessWidget {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                    if (config.showTags && item.tags.isNotEmpty)
+                    if (effectiveTags.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          item.tags.take(3).map((t) => '#$t').join(' '),
+                          effectiveTags
+                              .take(3)
+                              .map(TagVisuals.formatLabel)
+                              .join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10,
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w500,
+                            color: accent,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
