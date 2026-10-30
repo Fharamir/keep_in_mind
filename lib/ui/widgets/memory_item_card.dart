@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../utils/local_file_helper.dart';
 import '../../utils/tag_helper.dart';
@@ -39,10 +40,11 @@ class MemoryItemCard extends StatelessWidget {
   Future<void> _openUrl(BuildContext context, String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null) return;
+    final strings = AppLocalizations.of(context);
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Impossibile aprire il link: $url')),
+        SnackBar(content: Text(strings.cannotOpenLink(url))),
       );
     }
   }
@@ -73,7 +75,7 @@ class MemoryItemCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildTopRow(scheme, accent, dateStr),
+              _buildTopRow(context, scheme, accent, dateStr),
               const SizedBox(height: 8),
               Text(
                 item.title,
@@ -102,7 +104,13 @@ class MemoryItemCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTopRow(ColorScheme scheme, Color accent, String dateStr) {
+  Widget _buildTopRow(
+    BuildContext context,
+    ColorScheme scheme,
+    Color accent,
+    String dateStr,
+  ) {
+    final strings = AppLocalizations.of(context);
     final effectiveTags = TagVisuals.effectiveTagsForItem(item);
 
     return Row(
@@ -137,7 +145,7 @@ class MemoryItemCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            TagVisuals.formatLabel(tag),
+                            strings.tagLabel(tag),
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
@@ -166,7 +174,7 @@ class MemoryItemCard extends StatelessWidget {
             size: 18,
             color: item.isPinned ? scheme.primary : scheme.onSurfaceVariant,
           ),
-          tooltip: item.isPinned ? 'Rimuovi fissato' : 'Fissa in alto',
+          tooltip: item.isPinned ? strings.tooltipUnpin : strings.tooltipPin,
           visualDensity: VisualDensity.compact,
         ),
       ],
@@ -178,6 +186,7 @@ class MemoryItemCard extends StatelessWidget {
     ColorScheme scheme,
     Color accent,
   ) {
+    final strings = AppLocalizations.of(context);
     if (item.type == MemoryItemType.image &&
         ((item.filePath != null && item.filePath!.isNotEmpty) ||
             (item.base64Data != null && item.base64Data!.isNotEmpty))) {
@@ -216,7 +225,7 @@ class MemoryItemCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.fileName ?? 'Documento allegato',
+                      item.fileName ?? strings.fileAttachmentLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -248,6 +257,8 @@ class MemoryItemCard extends StatelessWidget {
   }
 
   Widget _buildBottomActions(BuildContext context, ColorScheme scheme) {
+    final strings = AppLocalizations.of(context);
+
     return Row(
       children: [
         if (item.domain != null && item.domain!.isNotEmpty)
@@ -269,7 +280,7 @@ class MemoryItemCard extends StatelessWidget {
           IconButton(
             onPressed: () => _openUrl(context, item.url!),
             icon: const Icon(Icons.open_in_new_rounded, size: 18),
-            tooltip: 'Apri link',
+            tooltip: strings.tooltipOpenLink,
             visualDensity: VisualDensity.compact,
           ),
         IconButton(
@@ -277,14 +288,14 @@ class MemoryItemCard extends StatelessWidget {
             final copyText = item.url ?? item.content;
             Clipboard.setData(ClipboardData(text: copyText));
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Copiato negli appunti'),
-                duration: Duration(seconds: 1),
+              SnackBar(
+                content: Text(strings.copiedToClipboard),
+                duration: const Duration(seconds: 1),
               ),
             );
           },
           icon: const Icon(Icons.copy_rounded, size: 18),
-          tooltip: 'Copia contenuto',
+          tooltip: strings.tooltipCopyContent,
           visualDensity: VisualDensity.compact,
         ),
         IconButton(
@@ -295,7 +306,7 @@ class MemoryItemCard extends StatelessWidget {
             SharePlus.instance.share(ShareParams(text: textToShare));
           },
           icon: const Icon(Icons.share_outlined, size: 18),
-          tooltip: 'Ricondividi',
+          tooltip: strings.tooltipReshare,
           visualDensity: VisualDensity.compact,
         ),
         IconButton(
@@ -305,7 +316,7 @@ class MemoryItemCard extends StatelessWidget {
             size: 18,
             color: scheme.error,
           ),
-          tooltip: 'Elimina dalla memoria',
+          tooltip: strings.tooltipDeleteFromMemory,
           visualDensity: VisualDensity.compact,
         ),
       ],

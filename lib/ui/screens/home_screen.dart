@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
@@ -44,6 +45,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   @override
+  void didChangeLocales(List<Locale>? locales) {
+    super.didChangeLocales(locales);
+    // If user has not set a manual override, react to OS system language change
+    if (widget.storage.languageOverride == null && mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       widget.storage.reloadFromDisk();
@@ -80,14 +90,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
 
       if (mounted) {
+        final strings = widget.storage.l10n;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
             content: Text(
-              'Salvato in Keep in Mind (${saved.type.label}): "${saved.title}"',
+              strings.savedInKeepInMind(
+                strings.typeLabel(saved.type.name),
+                saved.title,
+              ),
             ),
             action: SnackBarAction(
-              label: 'Apri',
+              label: strings.actionOpen,
               onPressed: () => _openDetail(saved),
             ),
           ),
@@ -107,10 +121,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     if (created != null && mounted) {
+      final strings = widget.storage.l10n;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
-          content: Text('Salvato: "${created.title}"'),
+          content: Text('${strings.actionSave}: "${created.title}"'),
         ),
       );
     }
@@ -135,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget _buildMainScaffold(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final strings = widget.storage.l10n;
 
     return ListenableBuilder(
       listenable: widget.storage,
@@ -170,14 +186,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     color: Colors.green.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.lock_rounded, size: 12, color: Colors.green),
-                      SizedBox(width: 4),
+                      const Icon(Icons.lock_rounded, size: 12, color: Colors.green),
+                      const SizedBox(width: 4),
                       Text(
-                        'Locale',
-                        style: TextStyle(
+                        strings.badgeLocal,
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: Colors.green,
@@ -208,7 +224,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ? FloatingActionButton.extended(
                   onPressed: () => _openAddSheet(),
                   icon: const Icon(Icons.add_rounded),
-                  label: const Text('Aggiungi'),
+                  label: Text(strings.actionAdd),
+                  tooltip: strings.tooltipAddMemory,
                 )
               : null,
           bottomNavigationBar: NavigationBar(
@@ -216,21 +233,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onDestinationSelected: (index) {
               setState(() => _selectedNavIndex = index);
             },
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                icon: Icon(Icons.inventory_2_outlined),
-                selectedIcon: Icon(Icons.inventory_2_rounded),
-                label: 'Contenuti',
+                icon: const Icon(Icons.inventory_2_outlined),
+                selectedIcon: const Icon(Icons.inventory_2_rounded),
+                label: strings.navLibrary,
               ),
               NavigationDestination(
-                icon: Icon(Icons.widgets_outlined),
-                selectedIcon: Icon(Icons.widgets_rounded),
-                label: 'Widget',
+                icon: const Icon(Icons.widgets_outlined),
+                selectedIcon: const Icon(Icons.widgets_rounded),
+                label: strings.navWidget,
               ),
               NavigationDestination(
-                icon: Icon(Icons.tune_outlined),
-                selectedIcon: Icon(Icons.tune_rounded),
-                label: 'App & Esporta',
+                icon: const Icon(Icons.tune_outlined),
+                selectedIcon: const Icon(Icons.tune_rounded),
+                label: strings.navAppAndExport,
               ),
             ],
           ),
@@ -285,6 +302,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final onlyPinned = widget.storage.onlyPinnedFilter;
     final tags = widget.storage.availableTags;
 
+    final strings = widget.storage.l10n;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -298,7 +317,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onChanged: widget.storage.setSearchQuery,
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
             decoration: InputDecoration(
-              hintText: 'Cerca nei contenuti salvati (titolo, link, #tag)...',
+              hintText: strings.searchHint,
               prefixIcon: Icon(
                 Icons.search_rounded,
                 size: 24,
@@ -306,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
+                      tooltip: strings.clearSearchTooltip,
                       onPressed: () {
                         _searchController.clear();
                         widget.storage.setSearchQuery('');
@@ -345,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: Row(
             children: [
               FilterChip(
-                label: const Text('Tutti'),
+                label: Text(strings.filterAll),
                 selected: selectedType == null &&
                     !onlyPinned &&
                     selectedTag == null,
@@ -354,7 +374,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox(width: 8),
               FilterChip(
                 avatar: const Icon(Icons.push_pin_rounded, size: 15),
-                label: const Text('Fissati'),
+                label: Text(strings.filterPinned),
                 selected: onlyPinned,
                 onSelected: (v) => widget.storage.setOnlyPinnedFilter(v),
               ),
@@ -371,7 +391,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       color: color,
                     ),
                     label: Text(
-                      TagVisuals.formatLabel(tag),
+                      strings.tagLabel(tag),
                       style: TextStyle(
                         fontWeight:
                             isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -401,6 +421,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildEmptyState(ColorScheme scheme) {
+    final strings = widget.storage.l10n;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -414,14 +435,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
             const SizedBox(height: 12),
             Text(
-              'Nessun contenuto trovato',
+              strings.emptyStateTitle,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
             ),
             const SizedBox(height: 6),
             Text(
-              'Condividi qualsiasi link, testo, immagine o file dal tuo sistema operativo scegliendo "Keep in Mind", oppure premi il pulsante + qui sotto.',
+              strings.emptyStateSubtitle,
               textAlign: TextAlign.center,
               style: TextStyle(color: scheme.onSurfaceVariant),
             ),

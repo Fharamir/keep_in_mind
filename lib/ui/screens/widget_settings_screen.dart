@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
@@ -26,6 +27,7 @@ class WidgetConfigView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final strings = storage.l10n;
 
     return ListenableBuilder(
       listenable: storage,
@@ -37,14 +39,14 @@ class WidgetConfigView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
             Text(
-              'Anteprima Live del Widget',
+              strings.widgetPreviewTitle,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 6),
             Text(
-              'Ecco come appare il widget Keep in Mind sulla schermata Home del dispositivo con gli ultimi ${config.maxItems} contenuti:',
+              strings.widgetPreviewSubtitle(config.maxItems),
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 12),
@@ -78,6 +80,8 @@ class WidgetConfigView extends StatelessWidget {
     ColorScheme scheme,
     WidgetConfig config,
   ) {
+    final strings = storage.l10n;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -94,7 +98,7 @@ class WidgetConfigView extends StatelessWidget {
                 Icon(Icons.widgets_outlined, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Impostazioni Widget (1 - 5 contenuti)',
+                  strings.widgetConfigCardTitle,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -105,10 +109,10 @@ class WidgetConfigView extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Numero di elementi mostrati:'),
+                Text(strings.widgetConfigItemsCount),
                 Chip(
                   label: Text(
-                    '${config.maxItems} ${config.maxItems == 1 ? "elemento" : "elementi"}',
+                    '${config.maxItems}',
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   visualDensity: VisualDensity.compact,
@@ -129,10 +133,8 @@ class WidgetConfigView extends StatelessWidget {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Dai priorità ai contenuti Fissati'),
-              subtitle: const Text(
-                'Mostra prima gli elementi con la puntina e poi gli ultimi salvati',
-              ),
+              title: Text(strings.widgetConfigPrioritizePinned),
+              subtitle: Text(strings.widgetConfigPrioritizePinnedSubtitle),
               value: config.prioritizePinned,
               onChanged: (v) {
                 storage.updateWidgetConfig(
@@ -141,9 +143,9 @@ class WidgetConfigView extends StatelessWidget {
               },
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Filtra per Tag nel Widget:',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            Text(
+              strings.widgetConfigFilterBy,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -151,7 +153,7 @@ class WidgetConfigView extends StatelessWidget {
               runSpacing: 8,
               children: [
                 ChoiceChip(
-                  label: const Text('Tutti'),
+                  label: Text(strings.filterAll),
                   selected: config.filterTag == null &&
                       config.filterType == null,
                   onSelected: (_) {
@@ -173,7 +175,7 @@ class WidgetConfigView extends StatelessWidget {
                       color: color,
                     ),
                     label: Text(
-                      TagVisuals.formatLabel(tag),
+                      strings.tagLabel(tag),
                       style: TextStyle(
                         fontWeight:
                             isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -234,6 +236,8 @@ class AppAndExportView extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
+            _buildLanguageSelectorCard(context, scheme),
+            const SizedBox(height: 20),
             _buildPrivacyAndBackupCard(context, scheme),
             const SizedBox(height: 20),
             _buildAppStatsAndConfigCard(
@@ -251,7 +255,118 @@ class AppAndExportView extends StatelessWidget {
     );
   }
 
+  Widget _buildLanguageSelectorCard(BuildContext context, ColorScheme scheme) {
+    final strings = storage.l10n;
+    final currentOverride = storage.languageOverride;
+    final effectiveLang = storage.effectiveLanguage;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.translate_rounded, color: scheme.primary),
+                const SizedBox(width: 8),
+                Text(
+                  strings.languageSettingsTitle,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const Spacer(),
+                if (currentOverride == null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      strings.languageAutoSystem,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              strings.languageSettingsSubtitle,
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String?>(
+              initialValue: currentOverride,
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: Row(
+                    children: [
+                      const Text('🌐', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Text(
+                        '${strings.languageAutoSystem} (${effectiveLang.label})',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+                ...AppLanguage.values.map(
+                  (lang) => DropdownMenuItem<String?>(
+                    value: lang.code,
+                    child: Row(
+                      children: [
+                        Text(lang.flag, style: const TextStyle(fontSize: 18)),
+                        const SizedBox(width: 10),
+                        Text(
+                          '${lang.label} (${lang.code.toUpperCase()})',
+                          style: TextStyle(
+                            fontWeight: currentOverride == lang.code
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              onChanged: (newCode) async {
+                await storage.setLanguageOverride(newCode);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPrivacyAndBackupCard(BuildContext context, ColorScheme scheme) {
+    final strings = storage.l10n;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -268,7 +383,7 @@ class AppAndExportView extends StatelessWidget {
                 Icon(Icons.ios_share_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Esporta & Ripristina Contenuti',
+                  strings.backupCardTitle,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -277,7 +392,7 @@ class AppAndExportView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Esporta tutti i tuoi contenuti salvati in formato JSON per conservarne una copia di backup o trasferirli su un altro dispositivo.',
+              strings.backupDescription,
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 16),
@@ -291,30 +406,30 @@ class AppAndExportView extends StatelessWidget {
                     SharePlus.instance.share(
                       ShareParams(
                         text: json,
-                        subject: 'Keep in Mind Backup Locale',
+                        subject: 'Keep in Mind Backup JSON',
                       ),
                     );
                   },
                   icon: const Icon(Icons.ios_share_rounded, size: 18),
-                  label: const Text('Esporta Contenuti'),
+                  label: Text(strings.btnExportJson),
                 ),
                 OutlinedButton.icon(
                   onPressed: () {
                     final json = storage.exportBackupJson();
                     Clipboard.setData(ClipboardData(text: json));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Backup JSON copiato negli appunti'),
+                      SnackBar(
+                        content: Text(strings.copiedToClipboard),
                       ),
                     );
                   },
                   icon: const Icon(Icons.copy_all_rounded, size: 18),
-                  label: const Text('Copia Backup JSON'),
+                  label: Text(strings.btnCopyJson),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => _showImportDialog(context),
                   icon: const Icon(Icons.restore_page_outlined, size: 18),
-                  label: const Text('Importa JSON'),
+                  label: Text(strings.btnImportJson),
                 ),
               ],
             ),
@@ -331,6 +446,8 @@ class AppAndExportView extends StatelessWidget {
     required int pinnedCount,
     required int tagsCount,
   }) {
+    final strings = storage.l10n;
+
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -347,7 +464,7 @@ class AppAndExportView extends StatelessWidget {
                 Icon(Icons.settings_suggest_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Configurazione App & Memoria Locale',
+                  strings.preferencesCardTitle,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -360,7 +477,7 @@ class AppAndExportView extends StatelessWidget {
                 Expanded(
                   child: _buildStatTile(
                     scheme,
-                    label: 'Contenuti',
+                    label: strings.statTotalSaved,
                     value: '$totalItems',
                     icon: Icons.inventory_2_outlined,
                   ),
@@ -369,7 +486,7 @@ class AppAndExportView extends StatelessWidget {
                 Expanded(
                   child: _buildStatTile(
                     scheme,
-                    label: 'Fissati',
+                    label: strings.statPinned,
                     value: '$pinnedCount',
                     icon: Icons.push_pin_outlined,
                   ),
@@ -378,7 +495,7 @@ class AppAndExportView extends StatelessWidget {
                 Expanded(
                   child: _buildStatTile(
                     scheme,
-                    label: 'Tag',
+                    label: strings.statCustomTags,
                     value: '$tagsCount',
                     icon: Icons.tag_rounded,
                   ),
@@ -388,25 +505,151 @@ class AppAndExportView extends StatelessWidget {
             const SizedBox(height: 14),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Chiedi conferma prima di eliminare'),
-              subtitle: const Text(
-                'Mostra un avviso di sicurezza quando premi sul cestino',
-              ),
+              title: Text(strings.prefConfirmDelete),
+              subtitle: Text(strings.prefConfirmDeleteSubtitle),
               value: storage.confirmBeforeDelete,
               onChanged: (v) {
                 storage.setConfirmBeforeDelete(v);
               },
             ),
-            const SizedBox(height: 6),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.mic_none_rounded,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      strings.prefMaxAudioDuration,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                Chip(
+                  label: Text(
+                    StorageService.formatAudioDurationOption(
+                      storage.maxAudioDurationSeconds,
+                      strings,
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            Slider(
+              value: StorageService.audioDurationOptionsSeconds
+                  .indexOf(storage.maxAudioDurationSeconds)
+                  .clamp(0, StorageService.audioDurationOptionsSeconds.length - 1)
+                  .toDouble(),
+              min: 0,
+              max: (StorageService.audioDurationOptionsSeconds.length - 1).toDouble(),
+              divisions: StorageService.audioDurationOptionsSeconds.length - 1,
+              label: StorageService.formatAudioDurationOption(
+                storage.maxAudioDurationSeconds,
+                strings,
+              ),
+              onChanged: (val) {
+                final selectedOption =
+                    StorageService.audioDurationOptionsSeconds[val.round()];
+                storage.setMaxAudioDurationSeconds(selectedOption);
+              },
+            ),
+            if (storage.maxAudioDurationSeconds == 0) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.amber.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.amber,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        strings.prefAudioNoLimitWarning,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFFB78103),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.attach_file_rounded,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      strings.prefMaxFileSize,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+                Chip(
+                  label: Text(
+                    StorageService.formatFileSizeOption(
+                      storage.maxFileSizeMb,
+                      strings,
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            Slider(
+              value: StorageService.fileSizeOptionsMb
+                  .indexOf(storage.maxFileSizeMb)
+                  .clamp(0, StorageService.fileSizeOptionsMb.length - 1)
+                  .toDouble(),
+              min: 0,
+              max: (StorageService.fileSizeOptionsMb.length - 1).toDouble(),
+              divisions: StorageService.fileSizeOptionsMb.length - 1,
+              label: StorageService.formatFileSizeOption(
+                storage.maxFileSizeMb,
+                strings,
+              ),
+              onChanged: (val) {
+                final selectedOption =
+                    StorageService.fileSizeOptionsMb[val.round()];
+                storage.setMaxFileSizeMb(selectedOption);
+              },
+            ),
+            const SizedBox(height: 10),
             Text(
-              'Keep in Mind non utilizza alcun server cloud né telemetria. '
-              'Tutti i link, testi, immagini e file risiedono esclusivamente nella memoria locale del dispositivo.',
+              strings.backupDescription,
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             if (shareService != null) ...[
               const Divider(height: 28),
               Text(
-                'Strumenti di Test Condivisione:',
+                strings.shareTestToolsTitle,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -421,30 +664,29 @@ class AppAndExportView extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: () {
                       shareService!.simulateIncomingShare(
-                        const SharedIncomingPayload(
-                          subject: 'Articolo approfondimento Flutter Local-First',
+                        SharedIncomingPayload(
+                          subject: strings.simulatedLinkSubject,
                           text:
-                              'Articolo approfondimento Flutter Local-First https://docs.flutter.dev/platform-integration/android/install-app',
-                          source: 'Share to Self (Simulato)',
+                              '${strings.simulatedLinkSubject} https://docs.flutter.dev/platform-integration/android/install-app',
+                          source: strings.simulatedShareSource,
                         ),
                       );
                     },
                     icon: const Icon(Icons.link_rounded, size: 16),
-                    label: const Text('Simula Share Link'),
+                    label: Text(strings.btnSimulateShareLink),
                   ),
                   OutlinedButton.icon(
                     onPressed: () {
                       shareService!.simulateIncomingShare(
-                        const SharedIncomingPayload(
-                          subject: 'Idea progetto Keep in Mind',
-                          text:
-                              'Ricordarsi di testare il widget sulla schermata Home con gli ultimi 1-5 contenuti salvati.',
-                          source: 'Share to Self (Simulato)',
+                        SharedIncomingPayload(
+                          subject: strings.simulatedNoteSubject,
+                          text: strings.simulatedNoteText,
+                          source: strings.simulatedShareSource,
                         ),
                       );
                     },
                     icon: const Icon(Icons.notes_rounded, size: 16),
-                    label: const Text('Simula Share Nota'),
+                    label: Text(strings.btnSimulateShareNote),
                   ),
                 ],
               ),
@@ -460,7 +702,7 @@ class AppAndExportView extends StatelessWidget {
                   color: scheme.error,
                 ),
                 label: Text(
-                  'Svuota contenuti salvati',
+                  strings.btnClearAll,
                   style: TextStyle(color: scheme.error),
                 ),
               ),
@@ -502,33 +744,28 @@ class AppAndExportView extends StatelessWidget {
 
   void _showImportDialog(BuildContext context) {
     final ctrl = TextEditingController();
+    final strings = storage.l10n;
 
     Future<void> processJsonString(String rawJson) async {
       try {
         final result = await storage.importBackupJson(rawJson);
         final added = result['addedCount'] ?? 0;
         final merged = result['mergedTagsCount'] ?? 0;
-        final skipped = result['skippedDuplicates'] ?? 0;
 
         if (context.mounted) {
           Navigator.of(context).pop();
-          final parts = <String>[];
-          if (added > 0) parts.add('Importati $added nuovi');
-          if (merged > 0) parts.add('$merged tag uniti');
-          if (skipped > 0) parts.add('$skipped duplicati saltati');
-          final msg = parts.isEmpty
-              ? 'Nessuna modifica: contenuti già presenti'
-              : parts.join(' · ');
-
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+            SnackBar(
+              content: Text(strings.importSuccessMessage(added, merged)),
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Formato JSON non valido'),
+            SnackBar(
+              content: Text(strings.importEmptyOrInvalidError),
               behavior: SnackBarBehavior.floating,
             ),
           );
@@ -539,16 +776,22 @@ class AppAndExportView extends StatelessWidget {
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Importa Backup JSON'),
+        title: Text(strings.importDialogTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              strings.importDialogInstruction,
+              style: const TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 10),
             TextField(
               controller: ctrl,
               maxLines: 5,
-              decoration: const InputDecoration(
-                hintText: 'Incolla qui il JSON esportato...',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                hintText: strings.importPasteHint,
+                border: const OutlineInputBorder(),
               ),
             ),
             const SizedBox(height: 12),
@@ -573,24 +816,24 @@ class AppAndExportView extends StatelessWidget {
                 } catch (e) {
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Errore lettura file: $e')),
+                      SnackBar(content: Text('Error: $e')),
                     );
                   }
                 }
               },
               icon: const Icon(Icons.folder_open_rounded, size: 18),
-              label: const Text('Scegli file .json dal dispositivo'),
+              label: Text(strings.btnChooseFile),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annulla'),
+            child: Text(strings.actionCancel),
           ),
           FilledButton(
             onPressed: () => processJsonString(ctrl.text.trim()),
-            child: const Text('Importa'),
+            child: Text(strings.btnConfirmImport),
           ),
         ],
       ),
@@ -598,26 +841,29 @@ class AppAndExportView extends StatelessWidget {
   }
 
   void _confirmClearAll(BuildContext context) {
+    final strings = storage.l10n;
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Svuotare tutti i contenuti salvati?'),
-        content: const Text(
-          'Questa operazione eliminerà definitivamente tutti i contenuti e i file allegati salvati sul dispositivo da questa applicazione.',
-        ),
+        title: Text(strings.clearAllDialogTitle),
+        content: Text(strings.clearAllDialogMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Annulla'),
+            child: Text(strings.actionCancel),
           ),
           FilledButton(
             onPressed: () async {
               await storage.clearAllItems();
               if (ctx.mounted) {
                 Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(strings.allDataCleared)),
+                );
               }
             },
-            child: const Text('Elimina tutto'),
+            child: Text(strings.btnClearAll),
           ),
         ],
       ),
@@ -635,6 +881,7 @@ class AppAndExportView extends StatelessWidget {
       } catch (_) {}
 
       if (context.mounted) {
+        final strings = storage.l10n;
         showDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
@@ -642,7 +889,7 @@ class AppAndExportView extends StatelessWidget {
               children: [
                 const Icon(Icons.coffee_rounded, color: Colors.amber),
                 const SizedBox(width: 8),
-                Text(title),
+                Expanded(child: Text(title)),
               ],
             ),
             content: Column(
@@ -650,27 +897,28 @@ class AppAndExportView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Supporto simbolico: $price',
+                  strings.symbolicSupportLabel(price),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Grazie di cuore per voler supportare Keep in Mind!\n'
-                  'Questa opzione è conforme alle policy di Google Play e in produzione collegherà il prodotto in-app di Google Play Console.',
-                  style: TextStyle(fontSize: 13),
+                Text(
+                  strings.coffeeDialogBody,
+                  style: const TextStyle(fontSize: 13),
                 ),
               ],
             ),
             actions: [
               FilledButton(
                 onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Chiudi'),
+                child: Text(strings.actionClose),
               ),
             ],
           ),
         );
       }
     }
+
+    final strings = storage.l10n;
 
     return Card(
       elevation: 0,
@@ -699,7 +947,7 @@ class AppAndExportView extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Credits & Support · Buy Me a Coffee',
+                  strings.creditsCardTitle,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
@@ -708,8 +956,7 @@ class AppAndExportView extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Keep in Mind è un progetto indipendente gratuito, senza annunci e senza tracciamento. '
-              'Tutti i dati rimangono sul tuo dispositivo. Se l\'app ti piace e vuoi supportarne la manutenzione, puoi offrirmi simbolicamente un caffè!',
+              strings.creditsDescription,
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: 14),
@@ -719,21 +966,21 @@ class AppAndExportView extends StatelessWidget {
               children: [
                 ActionChip(
                   avatar: const Text('☕'),
-                  label: const Text('Un Caffè · 1,99 €'),
+                  label: Text(strings.coffeeOption1),
                   onPressed: () =>
-                      handleTip('coffee_tip_1', 'Un Caffè ☕', '1,99 €'),
+                      handleTip('coffee_tip_1', strings.coffeeOption1, '1,99 €'),
                 ),
                 ActionChip(
                   avatar: const Text('🥐'),
-                  label: const Text('Caffè & Brioche · 3,99 €'),
+                  label: Text(strings.coffeeOption2),
                   onPressed: () => handleTip(
-                      'coffee_tip_2', 'Caffè & Brioche 🥐', '3,99 €'),
+                      'coffee_tip_2', strings.coffeeOption2, '3,99 €'),
                 ),
                 ActionChip(
                   avatar: const Text('🚀'),
-                  label: const Text('Super Supporto · 7,99 €'),
+                  label: Text(strings.coffeeOption3),
                   onPressed: () => handleTip(
-                      'coffee_tip_3', 'Super Supporto 🚀', '7,99 €'),
+                      'coffee_tip_3', strings.coffeeOption3, '7,99 €'),
                 ),
               ],
             ),
@@ -767,7 +1014,7 @@ class WidgetSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Configura Widget (1-5)'),
+        title: Text(storage.l10n.widgetConfigCardTitle),
       ),
       body: WidgetConfigView(storage: storage),
     );

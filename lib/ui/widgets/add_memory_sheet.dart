@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/storage_service.dart';
 import '../../utils/tag_helper.dart';
 
@@ -24,8 +25,6 @@ class AddMemorySheet extends StatefulWidget {
 class _AddMemorySheetState extends State<AddMemorySheet> {
   static const MethodChannel _mediaChannel =
       MethodChannel('com.example.keep_in_mind/media');
-  static const int _maxRecordingSeconds = 300; // 5 minutes
-  static const int _maxAttachmentSizeBytes = 50 * 1024 * 1024; // 50 MB
 
   late final TextEditingController _contentController;
   late final TextEditingController _titleController;
@@ -42,6 +41,8 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
   bool _isRecording = false;
   int _recordingSeconds = 0;
   Timer? _recordingTimer;
+
+  AppLocalizations get strings => widget.storage.l10n;
 
   @override
   void initState() {
@@ -128,7 +129,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
           _applyAttachment(
             file: PlatformFile(name: name, path: path, size: size),
             mimeType: mime,
-            defaultTitle: 'Foto scattata',
+            defaultTitle: strings.defaultPhotoTitle,
             defaultTag: 'immagine',
           );
         }
@@ -138,14 +139,14 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             behavior: SnackBarBehavior.floating,
-            content: Text(e.message ?? 'Impossibile aprire la fotocamera'),
+            content: Text(e.message ?? strings.cameraError),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore fotocamera: $e')),
+          SnackBar(content: Text('${strings.cameraError}: $e')),
         );
       }
     }
@@ -171,7 +172,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             _applyAttachment(
               file: PlatformFile(name: name, path: path, size: size),
               mimeType: mime,
-              defaultTitle: 'Nota vocale (${durationSec}s)',
+              defaultTitle: strings.defaultVoiceNoteTitle(durationSec),
               defaultTag: 'audio',
             );
           }
@@ -179,7 +180,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Errore salvataggio audio: $e')),
+            SnackBar(content: Text('${strings.audioSaveError}: $e')),
           );
         }
       }
@@ -192,15 +193,17 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             _isRecording = true;
             _recordingSeconds = 0;
           });
+          final maxAudioSeconds = widget.storage.maxAudioDurationSeconds;
           _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
             if (!mounted) return;
-            if (_recordingSeconds + 1 >= _maxRecordingSeconds) {
+            if (maxAudioSeconds > 0 &&
+                _recordingSeconds + 1 >= maxAudioSeconds) {
+              final limitLabel =
+                  StorageService.formatAudioDurationOption(maxAudioSeconds, strings);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
+                SnackBar(
                   behavior: SnackBarBehavior.floating,
-                  content: Text(
-                    'Raggiunto il limite massimo di 5 minuti: registrazione salvata.',
-                  ),
+                  content: Text(strings.audioMaxDurationSaved(limitLabel)),
                 ),
               );
               _toggleAudioRecording();
@@ -216,14 +219,14 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               behavior: SnackBarBehavior.floating,
-              content: Text(e.message ?? 'Permesso microfono negato'),
+              content: Text(e.message ?? strings.micPermissionDenied),
             ),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Errore avvio microfono: $e')),
+            SnackBar(content: Text('${strings.micPermissionDenied}: $e')),
           );
         }
       }
@@ -238,12 +241,20 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
       );
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        if (file.size > _maxAttachmentSizeBytes) {
+        final maxBytes = widget.storage.maxFileSizeBytes;
+        if (maxBytes != null && file.size > maxBytes) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
+              SnackBar(
                 behavior: SnackBarBehavior.floating,
-                content: Text('Il file supera il limite massimo consentito di 50 MB.'),
+                content: Text(
+                  strings.fileTooBigError(
+                    StorageService.formatFileSizeOption(
+                      widget.storage.maxFileSizeMb,
+                      strings,
+                    ),
+                  ),
+                ),
               ),
             );
           }
@@ -275,19 +286,20 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Errore selezione file: $e')),
+          SnackBar(content: Text('${strings.filePickError}: $e')),
         );
       }
     }
   }
 
   Future<void> _save() async {
+    final strings = widget.storage.l10n;
     final rawText = _contentController.text.trim();
     final rawSubject = _titleController.text.trim();
     if (rawText.isEmpty && _selectedFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Inserisci un link, una nota o allega un file/immagine'),
+        SnackBar(
+          content: Text(strings.errorNoEmptyItem),
         ),
       );
       return;
@@ -307,7 +319,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
       fileBytes: _selectedFile?.bytes,
       customTags: tags,
       isPinned: _isPinned,
-      source: 'Manuale / Locale',
+      source: strings.badgeLocal,
     );
 
     if (mounted) {
@@ -318,6 +330,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final strings = widget.storage.l10n;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Padding(
@@ -348,16 +361,19 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 Icon(Icons.add_task_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Keep in Mind (Salva in locale)',
+                  strings.addSheetTitle,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                 ),
                 const Spacer(),
-                TextButton.icon(
-                  onPressed: _pasteFromClipboard,
-                  icon: const Icon(Icons.content_paste_rounded, size: 16),
-                  label: const Text('Incolla'),
+                Tooltip(
+                  message: strings.tooltipPasteClipboard,
+                  child: TextButton.icon(
+                    onPressed: _pasteFromClipboard,
+                    icon: const Icon(Icons.content_paste_rounded, size: 16),
+                    label: Text(strings.actionPaste),
+                  ),
                 ),
               ],
             ),
@@ -367,8 +383,8 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
               maxLines: 4,
               minLines: 2,
               decoration: InputDecoration(
-                labelText: 'Link URL o Nota di testo',
-                hintText: 'https://... oppure scrivi un appunto veloce',
+                labelText: strings.inputContentLabel,
+                hintText: strings.inputContentHint,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -394,9 +410,9 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
 
       if (sanitized.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             behavior: SnackBarBehavior.floating,
-            content: Text('Il tag può contenere solo lettere, numeri, "-" e "_"'),
+            content: Text(strings.tagInvalidCharsError),
           ),
         );
         return;
@@ -404,9 +420,9 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
 
       if (sanitized.length > 20) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             behavior: SnackBarBehavior.floating,
-            content: Text('Il tag non può superare i 20 caratteri'),
+            content: Text(strings.tagMaxLengthError),
           ),
         );
         return;
@@ -428,7 +444,8 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
               child: TextField(
                 controller: _titleController,
                 decoration: InputDecoration(
-                  labelText: 'Titolo (opzionale)',
+                  labelText: strings.inputTitleLabel,
+                  hintText: strings.inputTitleHint,
                   prefixIcon: const Icon(Icons.title_rounded, size: 18),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -438,7 +455,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             ),
             const SizedBox(width: 8),
             PopupMenuButton<String>(
-              tooltip: 'Allega immagine, foto o file',
+              tooltip: strings.btnAttachFile,
               onSelected: (value) {
                 if (value == 'camera') {
                   _capturePhotoFromCamera();
@@ -448,12 +465,12 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                   _pickFile(imageOnly: false);
                 }
               },
-              itemBuilder: (context) => const [
+              itemBuilder: (context) => [
                 PopupMenuItem(
                   value: 'camera',
                   child: ListTile(
-                    leading: Icon(Icons.camera_alt_outlined),
-                    title: Text('Scatta foto (Fotocamera)'),
+                    leading: const Icon(Icons.camera_alt_outlined),
+                    title: Text(strings.btnPhoto),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -461,8 +478,8 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 PopupMenuItem(
                   value: 'gallery',
                   child: ListTile(
-                    leading: Icon(Icons.image_outlined),
-                    title: Text('Scegli immagine dalla galleria'),
+                    leading: const Icon(Icons.image_outlined),
+                    title: Text(strings.typeImage),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -470,8 +487,8 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 PopupMenuItem(
                   value: 'file',
                   child: ListTile(
-                    leading: Icon(Icons.attach_file_rounded),
-                    title: Text('Allega qualsiasi file'),
+                    leading: const Icon(Icons.attach_file_rounded),
+                    title: Text(strings.btnAttachFile),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                   ),
@@ -500,7 +517,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                   _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
                   color: _isRecording ? Colors.red : scheme.primary,
                 ),
-                tooltip: _isRecording ? 'Ferma registrazione' : 'Registra audio',
+                tooltip: _isRecording ? strings.btnStopAudio : strings.btnRecordAudio,
                 style: IconButton.styleFrom(
                   backgroundColor: _isRecording
                       ? Colors.red.withValues(alpha: 0.18)
@@ -530,13 +547,22 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Registrazione vocale in corso... ${_recordingSeconds}s / ${_maxRecordingSeconds}s (tocca stop per allegare)',
-                    style: const TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                    ),
+                  child: Builder(
+                    builder: (context) {
+                      final maxAudioSeconds =
+                          widget.storage.maxAudioDurationSeconds;
+                      final durationStr = maxAudioSeconds > 0
+                          ? '${_recordingSeconds}s / ${maxAudioSeconds}s'
+                          : '${_recordingSeconds}s / ∞ (${strings.optionNoLimit})';
+                      return Text(
+                        '${strings.audioRecordingLabel}... $durationStr',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -577,6 +603,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 IconButton(
                   onPressed: _clearAttachment,
                   icon: const Icon(Icons.close_rounded, size: 18),
+                  tooltip: strings.tooltipRemoveAttachment,
                   visualDensity: VisualDensity.compact,
                 ),
               ],
@@ -589,7 +616,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             Icon(Icons.tag_rounded, size: 18, color: scheme.primary),
             const SizedBox(width: 8),
             Text(
-              'Tag Disponibili:',
+              '${strings.detailSectionTags}:',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -606,7 +633,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                     : Icons.push_pin_outlined,
                 size: 16,
               ),
-              label: const Text('Fissa'),
+              label: Text(strings.filterPinned),
             ),
           ],
         ),
@@ -626,7 +653,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                   color: color,
                 ),
                 label: Text(
-                  TagVisuals.formatLabel(tag),
+                  strings.tagLabel(tag),
                   style: TextStyle(
                     fontWeight:
                         isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -664,7 +691,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                   maxLength: 20,
                   onSubmitted: (_) => addNewTag(),
                   decoration: InputDecoration(
-                    hintText: 'Crea nuovo tag...',
+                    hintText: strings.createNewTagHint,
                     counterText: '',
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     border: OutlineInputBorder(
@@ -680,7 +707,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
               child: OutlinedButton.icon(
                 onPressed: addNewTag,
                 icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('Aggiungi'),
+                label: Text(strings.btnAddTag),
                 style: OutlinedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -697,7 +724,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             onPressed: _isSaving ? null : _save,
             icon: const Icon(Icons.download_done_rounded),
             label: Text(
-              _isSaving ? 'Salvataggio in corso...' : 'Salva',
+              _isSaving ? strings.actionSaving : strings.actionSave,
             ),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),

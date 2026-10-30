@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../services/storage_service.dart';
 import '../../utils/local_file_helper.dart';
@@ -28,25 +29,26 @@ class ItemDetailScreen extends StatefulWidget {
     StorageService storage,
     MemoryItem item,
   ) async {
+    final strings = storage.l10n;
     if (storage.confirmBeforeDelete) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: const Text('Eliminare questo contenuto?'),
+          title: Text(strings.deleteConfirmTitle),
           content: Text(
-            'Vuoi eliminare definitivamente "${item.title}"?',
+            strings.deleteConfirmMessage(item.title),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Annulla'),
+              child: Text(strings.actionCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
               style: FilledButton.styleFrom(
                 backgroundColor: Theme.of(ctx).colorScheme.error,
               ),
-              child: const Text('Elimina'),
+              child: Text(strings.actionDelete),
             ),
           ],
         ),
@@ -81,6 +83,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   int _audioPositionMs = 0;
   int _audioDurationMs = 0;
   Timer? _audioStatusTimer;
+  AppLocalizations get strings => widget.storage.l10n;
+
 
   @override
   void initState() {
@@ -160,8 +164,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         _removeAttachment = false;
         _isEditing = false;
       });
+      final strings = widget.storage.l10n;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Modifiche salvate')),
+        SnackBar(content: Text(strings.changesSaved)),
       );
     }
   }
@@ -200,6 +205,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   Widget _buildScaffold(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final strings = widget.storage.l10n;
     final dateStr =
         DateFormat('dd/MM/yyyy · HH:mm:ss').format(_current.createdAt);
 
@@ -208,9 +214,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         leading: IconButton(
           onPressed: _handleBackNavigation,
           icon: const Icon(Icons.arrow_back_rounded),
-          tooltip: 'Indietro',
+          tooltip: strings.actionBack,
         ),
-        title: Text(_current.type.label),
+        title: Text(strings.typeLabel(_current.type.name)),
         actions: [
           IconButton(
             onPressed: _togglePin,
@@ -220,7 +226,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   : Icons.push_pin_outlined,
               color: _current.isPinned ? scheme.primary : null,
             ),
-            tooltip: _current.isPinned ? 'Rimuovi fissato' : 'Fissa in alto',
+            tooltip: _current.isPinned ? strings.tooltipUnpin : strings.tooltipPin,
           ),
           IconButton(
             onPressed: () {
@@ -231,12 +237,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               }
             },
             icon: Icon(_isEditing ? Icons.check_rounded : Icons.edit_outlined),
-            tooltip: _isEditing ? 'Salva modifiche' : 'Modifica',
+            tooltip: _isEditing ? strings.actionSaveDone : strings.actionEdit,
           ),
           IconButton(
             onPressed: _deleteItem,
             icon: Icon(Icons.delete_outline_rounded, color: scheme.error),
-            tooltip: 'Elimina',
+            tooltip: strings.actionDelete,
           ),
         ],
       ),
@@ -249,7 +255,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               Icon(Icons.shield_outlined, size: 15, color: scheme.primary),
               const SizedBox(width: 6),
               Text(
-                'Salvato (${_current.source}) · $dateStr',
+                '${strings.infoSavedOn} (${_current.source}) · $dateStr',
                 style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
               ),
             ],
@@ -321,7 +327,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Impossibile riprodurre l\'audio: $e')),
+            SnackBar(content: Text(strings.audioPlaybackError(e.toString()))),
           );
         }
       }
@@ -423,7 +429,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _current.fileName ?? 'File allegato',
+                        _current.fileName ?? strings.fileAttachmentLabel,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                       Text(
@@ -445,7 +451,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             if (_current.filePath != null && _current.filePath!.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                'Percorso: ${_current.filePath}',
+                '${strings.infoPath}: ${_current.filePath}',
                 style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
               ),
             ],
@@ -508,7 +514,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _current.fileName ?? 'Registrazione Audio',
+                      _current.fileName ?? strings.audioRecordingLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -532,7 +538,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 IconButton(
                   onPressed: _stopAudio,
                   icon: const Icon(Icons.stop_rounded),
-                  tooltip: 'Stop',
+                  tooltip: strings.btnStopAudio,
                 ),
             ],
           ),
@@ -604,7 +610,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '${_current.fileName ?? "Video allegato"} (tocca il video per i controlli)',
+                    strings.videoPlayerTapHint(
+                      _current.fileName ?? strings.videoAttachmentLabel,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -652,7 +660,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          _current.domain ?? 'Apri link nel browser',
+                          _current.domain ?? strings.btnOpenBrowser,
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: scheme.primary,
@@ -716,7 +724,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     Icon(TagVisuals.iconForTag(t), size: 15, color: tagColor),
                     const SizedBox(width: 5),
                     Text(
-                      TagVisuals.formatLabel(t),
+                      strings.tagLabel(t),
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
@@ -738,11 +746,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   final textToCopy = _current.url ?? _current.content;
                   Clipboard.setData(ClipboardData(text: textToCopy));
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Copiato negli appunti')),
+                    SnackBar(content: Text(strings.copiedToClipboard)),
                   );
                 },
                 icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text('Copia'),
+                label: Text(strings.actionCopy),
               ),
             ),
             const SizedBox(width: 12),
@@ -755,7 +763,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   SharePlus.instance.share(ShareParams(text: shareText));
                 },
                 icon: const Icon(Icons.share_outlined, size: 18),
-                label: const Text('Ricondividi'),
+                label: Text(strings.actionReshare),
               ),
             ),
           ],
@@ -800,13 +808,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       });
     }
 
+    final strings = widget.storage.l10n;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         TextField(
           controller: _titleController,
           decoration: InputDecoration(
-            labelText: 'Titolo',
+            labelText: strings.inputTitleLabel,
             prefixIcon: const Icon(Icons.title_rounded, size: 18),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
@@ -819,7 +829,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           maxLines: 6,
           minLines: 3,
           decoration: InputDecoration(
-            labelText: 'Contenuto / Link / Appunto',
+            labelText: strings.inputContentLabel,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
             ),
@@ -832,7 +842,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             Icon(Icons.tag_rounded, size: 18, color: scheme.primary),
             const SizedBox(width: 8),
             Text(
-              'Tag Disponibili:',
+              '${strings.detailSectionTags}:',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -857,7 +867,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   color: color,
                 ),
                 label: Text(
-                  TagVisuals.formatLabel(tag),
+                  strings.tagLabel(tag),
                   style: TextStyle(
                     fontWeight:
                         isSelected ? FontWeight.w700 : FontWeight.w600,
@@ -895,7 +905,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   maxLength: 20,
                   onSubmitted: (_) => addNewTag(),
                   decoration: InputDecoration(
-                    hintText: 'Crea nuovo tag...',
+                    hintText: strings.createNewTagHint,
                     counterText: '',
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                     border: OutlineInputBorder(
@@ -911,7 +921,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               child: OutlinedButton.icon(
                 onPressed: addNewTag,
                 icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('Aggiungi'),
+                label: Text(strings.btnAddTag),
                 style: OutlinedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -927,7 +937,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
           child: FilledButton.icon(
             onPressed: _saveEdits,
             icon: const Icon(Icons.save_outlined),
-            label: const Text('Salva Modifiche'),
+            label: Text(strings.actionSaveDone),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
@@ -1003,15 +1013,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             children: [
               Icon(Icons.info_outline_rounded, size: 18, color: scheme.error),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Allegato rimosso (verrà eliminato al salvataggio)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  strings.attachmentRemovedNotice,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
               TextButton(
                 onPressed: _handleUndoRemoveAttachmentInEdit,
-                child: const Text('Annulla'),
+                child: Text(strings.actionCancel),
               ),
             ],
           ),
@@ -1097,7 +1107,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     color: scheme.error,
                   ),
                   label: Text(
-                    'Rimuovi',
+                    widget.storage.l10n.actionRemove,
                     style: TextStyle(color: scheme.error),
                   ),
                 ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../utils/local_file_helper.dart';
 import '../../utils/tag_helper.dart';
@@ -27,6 +28,7 @@ class HomeWidgetPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final strings = AppLocalizations.of(context);
     final dateFmt = DateFormat('dd/MM HH:mm');
 
     return Container(
@@ -65,7 +67,7 @@ class HomeWidgetPreview extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Text(
-                'Nessun elemento nel widget.\nCondividi un link, testo o file con Keep in Mind!',
+                strings.widgetEmptyMessage,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
@@ -88,9 +90,9 @@ class HomeWidgetPreview extends StatelessWidget {
             child: FilledButton.tonalIcon(
               onPressed: onViewAllTap,
               icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-              label: const Text(
-                'Visualizza tutto',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              label: Text(
+                strings.widgetViewAll,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
               ),
               style: FilledButton.styleFrom(
                 visualDensity: VisualDensity.compact,
@@ -107,6 +109,10 @@ class HomeWidgetPreview extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context, ColorScheme scheme) {
+    final strings = AppLocalizations.of(context);
+    final countLabel = strings.widgetLatestCount(items.length, config.maxItems);
+    final totalLabel = strings.widgetLocalMemorySubtitle(totalCount);
+
     return Row(
       children: [
         ClipRRect(
@@ -153,7 +159,7 @@ class HomeWidgetPreview extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
-                      'Ultimi ${items.length}/${config.maxItems}',
+                      countLabel,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -164,7 +170,7 @@ class HomeWidgetPreview extends StatelessWidget {
                 ],
               ),
               Text(
-                'Memoria locale · $totalCount salvati',
+                totalLabel,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontSize: 11,
                       color: scheme.onSurfaceVariant,
@@ -177,14 +183,14 @@ class HomeWidgetPreview extends StatelessWidget {
           IconButton(
             onPressed: onConfigureTap,
             icon: const Icon(Icons.tune_rounded, size: 18),
-            tooltip: 'Configura Widget (1-5)',
+            tooltip: strings.widgetConfigCardTitle,
             visualDensity: VisualDensity.compact,
           ),
         if (onQuickAddTap != null)
           FilledButton.tonalIcon(
             onPressed: onQuickAddTap,
             icon: const Icon(Icons.add_rounded, size: 16),
-            label: const Text('Salva', style: TextStyle(fontSize: 12)),
+            label: Text(strings.widgetQuickAdd, style: const TextStyle(fontSize: 12)),
             style: FilledButton.styleFrom(
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -201,6 +207,7 @@ class HomeWidgetPreview extends StatelessWidget {
     bool isLast,
     DateFormat dateFmt,
   ) {
+    final strings = AppLocalizations.of(context);
     final effectiveTags = TagVisuals.effectiveTagsForItem(item);
     final primaryTag = effectiveTags.first;
     final accent = TagVisuals.colorForTag(primaryTag);
@@ -299,7 +306,7 @@ class HomeWidgetPreview extends StatelessWidget {
                         child: Text(
                           effectiveTags
                               .take(3)
-                              .map(TagVisuals.formatLabel)
+                              .map(strings.tagLabel)
                               .join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,

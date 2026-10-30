@@ -109,11 +109,22 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 val count = items.length().coerceAtMost(maxItems)
                 val totalCount = root.optInt("totalCount", items.length())
 
-                views.setTextViewText(R.id.widget_count, "Ultimi $count/$maxItems")
-                views.setTextViewText(
-                    R.id.widget_total_subtitle,
+                val countLabel = root.optString("countLabel", "Ultimi $count/$maxItems")
+                val subtitleLabel = root.optString(
+                    "subtitleLabel",
                     "Memoria locale · $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
                 )
+                val addBtnLabel = root.optString("addBtnLabel", "+ Salva")
+                val viewAllBtnLabel = root.optString("viewAllBtnLabel", "Visualizza tutto →")
+                val emptyLabel = root.optString("emptyLabel", null)
+
+                views.setTextViewText(R.id.widget_count, countLabel)
+                views.setTextViewText(R.id.widget_total_subtitle, subtitleLabel)
+                views.setTextViewText(R.id.widget_add_btn, addBtnLabel)
+                views.setTextViewText(R.id.widget_view_all_btn, viewAllBtnLabel)
+                if (!emptyLabel.isNullOrEmpty()) {
+                    views.setTextViewText(R.id.widget_empty, emptyLabel)
+                }
 
                 if (count == 0) {
                     views.setViewVisibility(R.id.widget_empty, View.VISIBLE)

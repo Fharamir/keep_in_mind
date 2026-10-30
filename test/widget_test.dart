@@ -1,10 +1,14 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:keep_in_mind/l10n/app_localizations.dart';
 import 'package:keep_in_mind/main.dart';
 import 'package:keep_in_mind/models/memory_item.dart';
 import 'package:keep_in_mind/services/share_intent_service.dart';
 import 'package:keep_in_mind/services/storage_service.dart';
 import 'package:keep_in_mind/services/widget_sync_service.dart';
+import 'package:keep_in_mind/ui/screens/widget_settings_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -91,6 +95,35 @@ void main() {
       expect(selected5.length, 5);
       expect(selected5.first.id, 'id-0');
     });
+
+    test('Valori di default e opzioni configurazione audio e file', () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      // Verifica default: 5min per l'audio (300 sec) e no limit per i file (0 MB)
+      expect(storage.maxAudioDurationSeconds, 300);
+      expect(StorageService.formatAudioDurationOption(storage.maxAudioDurationSeconds), '5m');
+      expect(storage.maxFileSizeMb, 0);
+      expect(StorageService.formatFileSizeOption(storage.maxFileSizeMb), 'No limit');
+      expect(storage.maxFileSizeBytes, isNull);
+
+      // Modifica valori
+      await storage.setMaxAudioDurationSeconds(0); // no limit
+      expect(storage.maxAudioDurationSeconds, 0);
+      expect(StorageService.formatAudioDurationOption(0), 'No limit');
+
+      await storage.setMaxFileSizeMb(50); // 50M
+      expect(storage.maxFileSizeMb, 50);
+      expect(StorageService.formatFileSizeOption(50), '50M');
+      expect(storage.maxFileSizeBytes, 50 * 1024 * 1024);
+
+      // Ricarica per verificare la persistenza in SharedPreferences
+      final storageReloaded = StorageService();
+      await storageReloaded.init();
+      expect(storageReloaded.maxAudioDurationSeconds, 0);
+      expect(storageReloaded.maxFileSizeMb, 50);
+    });
   });
 
   testWidgets('KeepInMindApp mostra la libreria locale e riceve Share to Self',
@@ -98,6 +131,7 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final storage = StorageService();
     await storage.init();
+    await storage.setLanguageOverride('it');
 
     final shareService = ShareIntentService();
     addTearDown(shareService.dispose);
@@ -127,6 +161,181 @@ void main() {
     expect(find.text('Articolo Test Privacy'), findsWidgets);
     expect(storage.allItems.first.domain, 'example.org');
     expect(lastWidgetPayloadJson, contains('Articolo Test Privacy'));
+  });
+
+  testWidgets('AppAndExportView mostra gli slider audio/file e la nota di avviso per audio no limit',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    SharedPreferences.setMockInitialValues({});
+    final storage = StorageService();
+    await storage.init();
+    await storage.setLanguageOverride('it');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: storage.effectiveLocale,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: AppLanguage.values.map((l) => Locale(l.code)).toList(),
+        home: Scaffold(
+          body: AppAndExportView(storage: storage),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Verifica controlli visibili con i loro default (audio: 5m, file: No limit)
+    expect(find.text('Lunghezza massima audio:'), findsOneWidget);
+    expect(find.text('5m'), findsOneWidget);
+
+    expect(find.text('Dimensione massima file:'), findsOneWidget);
+    expect(find.text('Nessun limite'), findsOneWidget);
+
+    // Con audio a 5m, il messaggio di avviso NON deve essere presente
+    expect(
+      find.textContaining('ricordati di interrompere la registrazione'),
+      findsNothing,
+    );
+
+    // Impostiamo l'audio a no limit (0)
+    await storage.setMaxAudioDurationSeconds(0);
+    await tester.pump();
+
+    // Ora l'avviso per memoria e batteria DEVE essere visibile
+    expect(
+      find.textContaining('ricordati di interrompere la registrazione o memoria e batteria saranno a rischio'),
+      findsOneWidget,
+    );
+  });
+
+  group('Keep in Mind - Multi-language, OS detection, Fallback and Override', () {
+    test('Risolve correttamente le lingue di sistema supportate', () {
+      expect(AppLanguage.resolve(systemLocale: const Locale('it')), AppLanguage.it);
+      expect(AppLanguage.resolve(systemLocale: const Locale('en')), AppLanguage.en);
+      expect(AppLanguage.resolve(systemLocale: const Locale('es')), AppLanguage.es);
+      expect(AppLanguage.resolve(systemLocale: const Locale('fr')), AppLanguage.fr);
+      expect(AppLanguage.resolve(systemLocale: const Locale('de')), AppLanguage.de);
+      expect(AppLanguage.resolve(systemLocale: const Locale('pt')), AppLanguage.pt);
+      expect(AppLanguage.resolve(systemLocale: const Locale('zh')), AppLanguage.zh);
+    });
+
+    test('Effettua fallback su inglese (en) se la lingua di sistema non è supportata', () {
+      // Lingue non supportate come ja (Giapponese), ru (Russo), ar (Arabo)
+      expect(AppLanguage.resolve(systemLocale: const Locale('ja')), AppLanguage.en);
+      expect(AppLanguage.resolve(systemLocale: const Locale('ru')), AppLanguage.en);
+      expect(AppLanguage.resolve(systemLocale: const Locale('ar')), AppLanguage.en);
+    });
+
+    test('L\'override dell\'utente ha precedenza sulla lingua di sistema', () {
+      // Sistema in italiano, ma override su spagnolo
+      expect(
+        AppLanguage.resolve(overrideCode: 'es', systemLocale: const Locale('it')),
+        AppLanguage.es,
+      );
+      // Sistema non supportato (ja), override su francese
+      expect(
+        AppLanguage.resolve(overrideCode: 'fr', systemLocale: const Locale('ja')),
+        AppLanguage.fr,
+      );
+      // Override resettato a null -> torna a lingua di sistema
+      expect(
+        AppLanguage.resolve(overrideCode: null, systemLocale: const Locale('de')),
+        AppLanguage.de,
+      );
+    });
+
+    test('StorageService persiste l\'override della lingua e notifica i listener', () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      expect(storage.languageOverride, isNull);
+
+      await storage.setLanguageOverride('de');
+      expect(storage.languageOverride, 'de');
+      expect(storage.effectiveLanguage, AppLanguage.de);
+      expect(storage.effectiveLocale, const Locale('de'));
+      expect(storage.l10n.actionSave, 'Speichern');
+
+      // Verifica persistenza ricaricando SharedPreferences
+      final reloadedStorage = StorageService();
+      await reloadedStorage.init();
+      expect(reloadedStorage.languageOverride, 'de');
+      expect(reloadedStorage.effectiveLanguage, AppLanguage.de);
+      expect(reloadedStorage.l10n.actionSave, 'Speichern');
+
+      // Ripristino su automatico (null)
+      await reloadedStorage.setLanguageOverride(null);
+      expect(reloadedStorage.languageOverride, isNull);
+    });
+
+    testWidgets('Selettore di lingua aggiorna dinamicamente tutta l\'interfaccia a runtime',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      final shareService = ShareIntentService();
+      addTearDown(shareService.dispose);
+
+      await tester.pumpWidget(
+        KeepInMindApp(
+          storage: storage,
+          shareService: shareService,
+        ),
+      );
+      await tester.pump();
+
+      // Default su sistema (es. IT o fallback EN)
+      // Cambiamo esplicitamente l'override a 'es' (Spagnolo)
+      await storage.setLanguageOverride('es');
+      await tester.pumpAndSettle();
+
+      // Verifichiamo che i testi siano in spagnolo
+      expect(find.text('Biblioteca'), findsOneWidget); // Tab
+      expect(find.text('App y Exportar'), findsOneWidget); // Tab
+      expect(find.text('Añadir'), findsOneWidget); // FAB
+
+      // Cambiamo l'override a 'fr' (Francese)
+      await storage.setLanguageOverride('fr');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bibliothèque'), findsOneWidget);
+      expect(find.text('App et Exporter'), findsOneWidget);
+      expect(find.text('Ajouter'), findsOneWidget);
+
+      // Cambiamo l'override a 'zh' (Cinese)
+      await storage.setLanguageOverride('zh');
+      await tester.pumpAndSettle();
+
+      expect(find.text('资料库'), findsOneWidget);
+      expect(find.text('应用与导出'), findsOneWidget);
+      expect(find.text('添加'), findsOneWidget);
+
+      // Ripristino su 'it' (Italiano)
+      await storage.setLanguageOverride('it');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Libreria'), findsOneWidget);
+      expect(find.text('App & Esporta'), findsOneWidget);
+      expect(find.text('Aggiungi'), findsOneWidget);
+    });
   });
 }
 

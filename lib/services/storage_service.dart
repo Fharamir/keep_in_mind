@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+import '../l10n/app_localizations.dart';
 import '../models/memory_item.dart';
 import '../utils/local_file_helper.dart';
 import '../utils/tag_helper.dart';
@@ -14,6 +16,65 @@ class StorageService extends ChangeNotifier {
   static const String _seededKey = 'kim_initial_seed_v1';
   static const String _confirmDeleteKey = 'kim_confirm_delete_v1';
   static const String _customTagsKey = 'kim_custom_tags_v1';
+  static const String _maxAudioDurationKey = 'kim_max_audio_seconds_v1';
+  static const String _maxFileSizeKey = 'kim_max_file_size_mb_v1';
+  static const String _languageOverrideKey = 'kim_language_override_v1';
+
+  /// Available options for max audio recording duration in seconds (0 = no limit).
+  static const List<int> audioDurationOptionsSeconds = [
+    60,
+    120,
+    300,
+    600,
+    1800,
+    3600,
+    0,
+  ];
+
+  /// Available options for max file attachment size in MB (0 = no limit).
+  static const List<int> fileSizeOptionsMb = [
+    5,
+    20,
+    50,
+    200,
+    0,
+  ];
+
+  static String formatAudioDurationOption(int seconds, [AppLocalizations? l10n]) {
+    switch (seconds) {
+      case 60:
+        return '1m';
+      case 120:
+        return '2m';
+      case 300:
+        return '5m';
+      case 600:
+        return '10m';
+      case 1800:
+        return '30m';
+      case 3600:
+        return '1h';
+      case 0:
+      default:
+        return l10n?.optionNoLimit ?? 'No limit';
+    }
+  }
+
+  static String formatFileSizeOption(int megabytes, [AppLocalizations? l10n]) {
+    switch (megabytes) {
+      case 5:
+        return '5M';
+      case 20:
+        return '20M';
+      case 50:
+        return '50M';
+      case 200:
+        return '200M';
+      case 0:
+      default:
+        return l10n?.optionNoLimit ?? 'No limit';
+    }
+  }
 
   final Uuid _uuid = const Uuid();
   SharedPreferences? _prefs;
@@ -31,6 +92,9 @@ class StorageService extends ChangeNotifier {
   String? _selectedTagFilter;
   bool _onlyPinnedFilter = false;
   bool _confirmBeforeDelete = true;
+  int _maxAudioDurationSeconds = 300; // Default: 5min
+  int _maxFileSizeMb = 0; // Default: no limit (0)
+  String? _languageOverride;
   bool _isLoaded = false;
 
   List<MemoryItem> get allItems => List.unmodifiable(_items);
@@ -40,7 +104,32 @@ class StorageService extends ChangeNotifier {
   String? get selectedTagFilter => _selectedTagFilter;
   bool get onlyPinnedFilter => _onlyPinnedFilter;
   bool get confirmBeforeDelete => _confirmBeforeDelete;
+  int get maxAudioDurationSeconds => _maxAudioDurationSeconds;
+  int get maxFileSizeMb => _maxFileSizeMb;
+  int? get maxFileSizeBytes =>
+      _maxFileSizeMb > 0 ? _maxFileSizeMb * 1024 * 1024 : null;
+  String? get languageOverride => _languageOverride;
+  AppLanguage get effectiveLanguage =>
+      AppLanguage.resolve(overrideCode: _languageOverride);
+  Locale get effectiveLocale => Locale(effectiveLanguage.code);
+  AppLocalizations get l10n => AppLocalizations(effectiveLanguage);
   bool get isLoaded => _isLoaded;
+
+  /// Sets or clears user language override (null = auto system / fallback).
+  Future<void> setLanguageOverride(String? languageCode) async {
+    _languageOverride = (languageCode != null && languageCode.isNotEmpty)
+        ? languageCode.toLowerCase()
+        : null;
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    _prefs = prefs;
+    if (_languageOverride != null) {
+      await prefs.setString(_languageOverrideKey, _languageOverride!);
+    } else {
+      await prefs.remove(_languageOverrideKey);
+    }
+    notifyListeners();
+    await _syncWidget();
+  }
 
   /// Items selected for the home screen widget.
   List<MemoryItem> get widgetItems =>
@@ -103,17 +192,20 @@ class StorageService extends ChangeNotifier {
     return filtered;
   }
 
+  Future<void> _syncWidget() async {
+    await WidgetSyncService.syncWidget(
+      allItems: _items,
+      config: _widgetConfig,
+      l10n: l10n,
+    );
+  }
+
   Future<void> init({bool seedIfFirstRun = true}) async {
     _prefs = await SharedPreferences.getInstance();
     _loadFromPrefs(seedIfFirstRun: seedIfFirstRun);
     _isLoaded = true;
     notifyListeners();
-    unawaited(
-      WidgetSyncService.syncWidget(
-        allItems: _items,
-        config: _widgetConfig,
-      ),
-    );
+    unawaited(_syncWidget());
   }
 
   /// Reloads items from disk to sync background changes.
@@ -123,19 +215,29 @@ class StorageService extends ChangeNotifier {
     await prefs.reload();
     _loadFromPrefs(seedIfFirstRun: false);
     notifyListeners();
-    unawaited(
-      WidgetSyncService.syncWidget(
-        allItems: _items,
-        config: _widgetConfig,
-      ),
-    );
+    unawaited(_syncWidget());
   }
 
   void _loadFromPrefs({required bool seedIfFirstRun}) {
     final prefs = _prefs;
     if (prefs == null) return;
 
+    _languageOverride = prefs.getString(_languageOverrideKey);
     _confirmBeforeDelete = prefs.getBool(_confirmDeleteKey) ?? true;
+
+    final savedAudio = prefs.getInt(_maxAudioDurationKey);
+    if (savedAudio != null && audioDurationOptionsSeconds.contains(savedAudio)) {
+      _maxAudioDurationSeconds = savedAudio;
+    } else {
+      _maxAudioDurationSeconds = 300;
+    }
+
+    final savedFile = prefs.getInt(_maxFileSizeKey);
+    if (savedFile != null && fileSizeOptionsMb.contains(savedFile)) {
+      _maxFileSizeMb = savedFile;
+    } else {
+      _maxFileSizeMb = 0;
+    }
 
     final rawCustomTags = prefs.getStringList(_customTagsKey);
     if (rawCustomTags != null) {
@@ -279,6 +381,26 @@ class StorageService extends ChangeNotifier {
     final prefs = _prefs;
     if (prefs != null) {
       await prefs.setBool(_confirmDeleteKey, value);
+    }
+  }
+
+  Future<void> setMaxAudioDurationSeconds(int seconds) async {
+    if (_maxAudioDurationSeconds == seconds) return;
+    _maxAudioDurationSeconds = seconds;
+    notifyListeners();
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setInt(_maxAudioDurationKey, seconds);
+    }
+  }
+
+  Future<void> setMaxFileSizeMb(int megabytes) async {
+    if (_maxFileSizeMb == megabytes) return;
+    _maxFileSizeMb = megabytes;
+    notifyListeners();
+    final prefs = _prefs;
+    if (prefs != null) {
+      await prefs.setInt(_maxFileSizeKey, megabytes);
     }
   }
 
@@ -472,30 +594,29 @@ class StorageService extends ChangeNotifier {
 
   List<MemoryItem> _createWelcomeItems() {
     final now = DateTime.now();
+    final strings = l10n;
     return [
       MemoryItem(
         id: _uuid.v4(),
         type: MemoryItemType.link,
-        title: 'Benvenuto in Keep in Mind — Guida Share to Self',
-        content:
-            'Usa il menu "Condividi" di qualsiasi app (Browser, YouTube, Foto, File Manager) e scegli "Keep in Mind" per salvare link, testi, immagini o file direttamente in locale.\nhttps://flutter.dev',
+        title: strings.welcomeLinkTitle,
+        content: strings.welcomeLinkContent,
         url: 'https://flutter.dev',
         domain: 'flutter.dev',
         tags: const ['link'],
         isPinned: true,
         createdAt: now.subtract(const Duration(minutes: 5)),
-        source: 'Sistema Locale',
+        source: strings.badgeLocal,
       ),
       MemoryItem(
         id: _uuid.v4(),
         type: MemoryItemType.text,
-        title: '100% Locale & Zero Cloud',
-        content:
-            'Tutti i tuoi link, appunti, immagini e documenti restano esclusivamente nella memoria privata del tuo dispositivo. Nessun account, nessun server esterno, massima privacy.',
+        title: strings.welcomeTextTitle,
+        content: strings.welcomeTextContent,
         tags: const ['nota'],
         isPinned: false,
         createdAt: now.subtract(const Duration(minutes: 15)),
-        source: 'Sistema Locale',
+        source: strings.badgeLocal,
       ),
     ];
   }
