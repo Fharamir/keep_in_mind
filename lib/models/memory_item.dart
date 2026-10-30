@@ -138,26 +138,88 @@ class MemoryItem {
   }
 
   factory MemoryItem.fromJson(Map<String, dynamic> json) {
+    // Sanitize URL: only allow http and https schemes to avoid scheme injection
+    String? cleanUrl;
+    final rawUrl = json['url']?.toString().trim();
+    if (rawUrl != null && rawUrl.isNotEmpty) {
+      final uri = Uri.tryParse(rawUrl);
+      if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+        cleanUrl = rawUrl;
+      }
+    }
+
+    // Defensive parsing with length boundaries to prevent memory/UI DoS
+    final rawTitle = json['title']?.toString().trim() ?? '';
+    final safeTitle = rawTitle.isEmpty
+        ? 'Senza titolo'
+        : (rawTitle.length > 500 ? rawTitle.substring(0, 500) : rawTitle);
+
+    final rawContent = json['content']?.toString() ?? '';
+    final safeContent = rawContent.length > 100000
+        ? rawContent.substring(0, 100000)
+        : rawContent;
+
+    final rawDomain = json['domain']?.toString().trim();
+    final safeDomain = (rawDomain != null && rawDomain.length > 200)
+        ? rawDomain.substring(0, 200)
+        : rawDomain;
+
+    final rawFileName = json['fileName']?.toString().trim();
+    final safeFileName = (rawFileName != null && rawFileName.length > 255)
+        ? rawFileName.substring(0, 255)
+        : rawFileName;
+
+    final rawMime = json['mimeType']?.toString().trim();
+    final safeMime = (rawMime != null && rawMime.length > 100)
+        ? rawMime.substring(0, 100)
+        : rawMime;
+
+    final rawTags = json['tags'];
+    List<String> parsedTags = const [];
+    if (rawTags is List) {
+      parsedTags = rawTags
+          .map((e) => e?.toString().trim().toLowerCase() ?? '')
+          .where((e) => e.isNotEmpty && e.length <= 50)
+          .take(30)
+          .toList();
+    }
+
+    final rawPinned = json['isPinned'];
+    final bool safePinned = rawPinned == true || rawPinned == 'true';
+
+    final rawCreatedAt = json['createdAt']?.toString();
+    final DateTime safeCreatedAt =
+        (rawCreatedAt != null ? DateTime.tryParse(rawCreatedAt) : null) ??
+            DateTime.now();
+
+    final rawSource = json['source']?.toString().trim();
+    final safeSource = (rawSource != null && rawSource.isNotEmpty)
+        ? (rawSource.length > 50 ? rawSource.substring(0, 50) : rawSource)
+        : 'Share to Self';
+
+    final rawFileSize = json['fileSizeBytes'];
+    int? safeFileSize;
+    if (rawFileSize is num) {
+      safeFileSize = rawFileSize.toInt();
+      if (safeFileSize < 0) safeFileSize = null;
+    }
+
     return MemoryItem(
-      id: json['id'] as String? ?? '',
-      type: MemoryItemType.fromString(json['type'] as String?),
-      title: json['title'] as String? ?? 'Senza titolo',
-      content: json['content'] as String? ?? '',
-      url: json['url'] as String?,
-      domain: json['domain'] as String?,
-      filePath: json['filePath'] as String?,
-      fileName: json['fileName'] as String?,
-      mimeType: json['mimeType'] as String?,
-      fileSizeBytes: json['fileSizeBytes'] as int?,
-      base64Data: json['base64Data'] as String?,
-      tags: (json['tags'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
-      isPinned: json['isPinned'] as bool? ?? false,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
-          DateTime.now(),
-      source: json['source'] as String? ?? 'Share to Self',
+      id: json['id']?.toString() ?? '',
+      type: MemoryItemType.fromString(json['type']?.toString()),
+      title: safeTitle,
+      content: safeContent,
+      url: cleanUrl,
+      domain: safeDomain,
+      filePath: json['filePath']?.toString(),
+      fileName: safeFileName,
+      mimeType: safeMime,
+      fileSizeBytes: safeFileSize,
+      base64Data: json['base64Data']?.toString(),
+      tags: parsedTags,
+      isPinned: safePinned,
+      createdAt: safeCreatedAt,
+      source: safeSource,
     );
   }
 

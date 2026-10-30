@@ -215,7 +215,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               AppAndExportView(
                 storage: widget.storage,
-                shareService: widget.shareService,
               ),
             ],
           ),

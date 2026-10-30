@@ -499,17 +499,36 @@ class StorageService extends ChangeNotifier {
   }
 
   Future<Map<String, int>> importBackupJson(String jsonString) async {
-    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
-    final rawList = decoded['items'] as List<dynamic>? ?? const [];
-    final rawCustomTags = decoded['customTags'] as List<dynamic>? ?? const [];
+    // Limit payload size to 15 MB to prevent OOM denial of service
+    if (jsonString.length > 15 * 1024 * 1024) {
+      throw const FormatException('File o contenuto JSON troppo grande (max 15 MB)');
+    }
+
+    final dynamic decodedRaw = jsonDecode(jsonString);
+    final Map<String, dynamic> decoded;
+    final List<dynamic> rawList;
+    final List<dynamic> rawCustomTags;
+
+    if (decodedRaw is Map) {
+      decoded = Map<String, dynamic>.from(decodedRaw);
+      rawList = (decoded['items'] as List<dynamic>?) ?? const [];
+      rawCustomTags = (decoded['customTags'] as List<dynamic>?) ?? const [];
+    } else if (decodedRaw is List) {
+      decoded = const {};
+      rawList = decodedRaw;
+      rawCustomTags = const [];
+    } else {
+      throw const FormatException('Formato JSON non valido (previsto oggetto o lista)');
+    }
 
     int addedCount = 0;
     int mergedTagsCount = 0;
     int skippedDuplicates = 0;
 
-    for (final t in rawCustomTags) {
-      final clean = t.toString().trim().toLowerCase();
+    for (final t in rawCustomTags.take(100)) {
+      final clean = t?.toString().trim().toLowerCase() ?? '';
       if (clean.isNotEmpty &&
+          clean.length <= 40 &&
           !defaultTags.contains(clean) &&
           !_deprecatedSeedTags.contains(clean)) {
         if (_customTags.add(clean)) {
@@ -518,15 +537,28 @@ class StorageService extends ChangeNotifier {
       }
     }
 
-    for (final raw in rawList) {
-      if (raw is Map<String, dynamic>) {
-        final importedItem = MemoryItem.fromJson(raw);
+    // Limit maximum items to prevent DoS / unbounded memory consumption
+    for (final raw in rawList.take(2000)) {
+      if (raw is! Map) continue;
+      try {
+        final rawMap = Map<String, dynamic>.from(raw);
+        final importedItem = MemoryItem.fromJson(rawMap);
         if (importedItem.id.isEmpty && importedItem.title.isEmpty) continue;
+
+        // Verify attachment safety: ensure filePath is inside the app attachments folder
+        String? safeFilePath;
+        if (importedItem.filePath != null && importedItem.filePath!.isNotEmpty) {
+          final isSafe = await LocalFileHelper.isSafeAttachmentPath(importedItem.filePath);
+          if (isSafe) {
+            safeFilePath = importedItem.filePath;
+          }
+        }
 
         // Sanitize imported tags
         final cleanTags = importedItem.tags
             .map((e) => e.trim().toLowerCase())
-            .where((e) => e.isNotEmpty && !_deprecatedSeedTags.contains(e))
+            .where((e) => e.isNotEmpty && e.length <= 40 && !_deprecatedSeedTags.contains(e))
+            .take(20)
             .toList();
 
         for (final tag in cleanTags) {
@@ -535,9 +567,12 @@ class StorageService extends ChangeNotifier {
           }
         }
 
-        final fixedItem = importedItem.id.isEmpty
-            ? importedItem.copyWith(id: _uuid.v4(), tags: cleanTags)
-            : importedItem.copyWith(tags: cleanTags);
+        final fixedItem = importedItem.copyWith(
+          id: importedItem.id.isEmpty ? _uuid.v4() : importedItem.id,
+          tags: cleanTags,
+          filePath: safeFilePath,
+          clearAttachment: safeFilePath == null && importedItem.filePath != null,
+        );
 
         // Match duplicates by ID, URL, or title and content
         final existingIndex = _items.indexWhere((existing) {
@@ -571,6 +606,9 @@ class StorageService extends ChangeNotifier {
           _items.insert(0, fixedItem);
           addedCount++;
         }
+      } catch (_) {
+        // Skip corrupted or unparsable individual item
+        continue;
       }
     }
 

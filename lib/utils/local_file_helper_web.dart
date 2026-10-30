@@ -15,6 +15,10 @@ class LocalFileHelper {
     return null;
   }
 
+  static Future<bool> isSafeAttachmentPath(String? path) async {
+    return false;
+  }
+
   static Future<void> deleteLocalFile(String? path) async {}
 
   static Future<String?> readTextFilePreview(String? path, {int maxChars = 2000}) async {

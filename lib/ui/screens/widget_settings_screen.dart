@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
-import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';
 import '../../utils/tag_helper.dart';
 import '../widgets/home_widget_preview.dart';
@@ -217,12 +216,10 @@ class WidgetConfigView extends StatelessWidget {
 /// App settings, JSON backup/restore, and privacy view.
 class AppAndExportView extends StatelessWidget {
   final StorageService storage;
-  final ShareIntentService? shareService;
 
   const AppAndExportView({
     super.key,
     required this.storage,
-    this.shareService,
   });
 
   @override
@@ -253,6 +250,8 @@ class AppAndExportView extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             _buildCreditsAndSupportCard(context, scheme),
+            const SizedBox(height: 20),
+            _buildDangerZoneCard(context, scheme),
           ],
         );
       },
@@ -678,67 +677,6 @@ class AppAndExportView extends StatelessWidget {
               strings.backupDescription,
               style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
             ),
-            if (shareService != null) ...[
-              const Divider(height: 28),
-              Text(
-                strings.shareTestToolsTitle,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      shareService!.simulateIncomingShare(
-                        SharedIncomingPayload(
-                          subject: strings.simulatedLinkSubject,
-                          text:
-                              '${strings.simulatedLinkSubject} https://docs.flutter.dev/platform-integration/android/install-app',
-                          source: strings.simulatedShareSource,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.link_rounded, size: 16),
-                    label: Text(strings.btnSimulateShareLink),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      shareService!.simulateIncomingShare(
-                        SharedIncomingPayload(
-                          subject: strings.simulatedNoteSubject,
-                          text: strings.simulatedNoteText,
-                          source: strings.simulatedShareSource,
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.notes_rounded, size: 16),
-                    label: Text(strings.btnSimulateShareNote),
-                  ),
-                ],
-              ),
-            ],
-            const Divider(height: 28),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => _confirmClearAll(context),
-                icon: Icon(
-                  Icons.delete_forever_outlined,
-                  size: 18,
-                  color: scheme.error,
-                ),
-                label: Text(
-                  strings.btnClearAll,
-                  style: TextStyle(color: scheme.error),
-                ),
-              ),
-            ),
           ],
         ),
       ),
@@ -838,8 +776,20 @@ class AppAndExportView extends StatelessWidget {
                     withData: true,
                   );
                   if (picked != null && picked.files.isNotEmpty) {
-                    final bytes = picked.files.first.bytes;
+                    final file = picked.files.first;
+                    final bytes = file.bytes;
                     if (bytes != null) {
+                      if (bytes.length > 15 * 1024 * 1024) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('File troppo grande (max 15 MB)'),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        }
+                        return;
+                      }
                       final jsonStr = utf8.decode(bytes);
                       if (ctx.mounted) {
                         Navigator.of(ctx).pop();
@@ -1030,6 +980,63 @@ class AppAndExportView extends StatelessWidget {
                   fontWeight: FontWeight.w600,
                 ),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDangerZoneCard(BuildContext context, ColorScheme scheme) {
+    final strings = storage.l10n;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.error.withValues(alpha: 0.3)),
+      ),
+      color: scheme.errorContainer.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: scheme.error,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  strings.clearAllDialogTitle,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: scheme.error,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              strings.clearAllDialogMessage,
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => _confirmClearAll(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: scheme.error,
+                side: BorderSide(color: scheme.error.withValues(alpha: 0.5)),
+              ),
+              icon: const Icon(Icons.delete_forever_outlined, size: 18),
+              label: Text(strings.btnClearAll),
             ),
           ],
         ),

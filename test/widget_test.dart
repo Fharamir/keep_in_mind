@@ -336,6 +336,97 @@ void main() {
       expect(find.text('App & Esporta'), findsOneWidget);
       expect(find.text('Aggiungi'), findsOneWidget);
     });
+
+    testWidgets('AppAndExportView non include pulsanti simulazione e posiziona clear all in fondo',
+        (WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('it'),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: AppLanguage.values.map((l) => Locale(l.code)).toList(),
+          home: Scaffold(
+            body: AppAndExportView(storage: storage),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // I pulsanti di simulazione share non devono più essere presenti
+      expect(find.text(storage.l10n.btnSimulateShareLink), findsNothing);
+      expect(find.text(storage.l10n.btnSimulateShareNote), findsNothing);
+
+      // Il pulsante "Cancella tutti i dati" deve essere presente nel menu
+      expect(find.text(storage.l10n.btnClearAll), findsOneWidget);
+    });
+
+    test('Hardening Import JSON: rifiuta schemi URL pericolosi, path traversal e tipi non validi', () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      const maliciousJson = '''
+      {
+        "items": [
+          {
+            "id": "item-exploit-1",
+            "type": "link",
+            "title": "Malicious Link Test",
+            "content": "Trying javascript injection",
+            "url": "javascript:alert(1)",
+            "tags": ["test"]
+          },
+          {
+            "id": "item-exploit-2",
+            "type": "file",
+            "title": "Malicious File Path Test",
+            "content": "Trying path traversal",
+            "filePath": "/data/data/com.example.keep_in_mind/shared_prefs/secret.xml",
+            "fileName": "secret.xml",
+            "tags": ["test"]
+          },
+          {
+            "id": "item-corrupted-types",
+            "title": 99999,
+            "content": true,
+            "isPinned": "true",
+            "tags": "non-list-tag"
+          }
+        ]
+      }
+      ''';
+
+      final result = await storage.importBackupJson(maliciousJson);
+      expect(result['addedCount'], 3);
+
+      final linkItem = storage.allItems.firstWhere((e) => e.id == 'item-exploit-1');
+      // Lo schema javascript: deve essere stato azzerato / ignorato
+      expect(linkItem.url, isNull);
+
+      final fileItem = storage.allItems.firstWhere((e) => e.id == 'item-exploit-2');
+      // Il path non è nella cartella attachments autorizzata, quindi deve essere sanitizzato a null
+      expect(fileItem.filePath, isNull);
+
+      final corruptedItem = storage.allItems.firstWhere((e) => e.id == 'item-corrupted-types');
+      // I tipi non validi sono stati convertiti in modo difensivo senza crashare
+      expect(corruptedItem.title, '99999');
+      expect(corruptedItem.content, 'true');
+      expect(corruptedItem.isPinned, isTrue);
+    });
   });
 }
 

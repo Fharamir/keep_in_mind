@@ -59,10 +59,33 @@ class LocalFileHelper {
     return null;
   }
 
-  /// Deletes a local attachment file if it exists.
+  /// Verifies that [path] resides strictly inside the app's local attachments directory
+  /// and does not contain path traversal (e.g. '..').
+  static Future<bool> isSafeAttachmentPath(String? path) async {
+    if (path == null || path.trim().isEmpty) return false;
+    final trimmed = path.trim();
+    if (trimmed.contains('..')) return false;
+    try {
+      final docsDir = await getApplicationDocumentsDirectory();
+      final attachmentsDir = Directory(
+        '${docsDir.path}${Platform.pathSeparator}keep_in_mind_attachments',
+      );
+      final file = File(trimmed);
+      if (!await file.exists()) return false;
+      final fileCanonical = file.resolveSymbolicLinksSync().toLowerCase();
+      final dirCanonical = attachmentsDir.resolveSymbolicLinksSync().toLowerCase();
+      return fileCanonical.startsWith(dirCanonical);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Deletes a local attachment file only if it is safely located within the app attachments directory.
   static Future<void> deleteLocalFile(String? path) async {
     if (path == null || path.isEmpty) return;
     try {
+      final isSafe = await isSafeAttachmentPath(path);
+      if (!isSafe) return;
       final file = File(path);
       if (await file.exists()) {
         await file.delete();
