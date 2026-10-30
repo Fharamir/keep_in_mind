@@ -51,9 +51,7 @@ class MainActivity : FlutterActivity() {
     private var currentPlayingPath: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        // Se l'app è stata aperta tramite Share Intent, elaboriamo in background,
-        // mostriamo il Toast e chiudiamo l'Activity PRIMA di chiamare super.onCreate()
-        // ed evitare qualsiasi inizializzazione di FlutterView/interfaccia grafica.
+        // Handle incoming share intents silently without launching the Flutter UI
         if (isShareIntent(intent)) {
             super.onCreate(savedInstanceState)
             handleShareIntentDirectly(intent)
@@ -174,6 +172,17 @@ class MainActivity : FlutterActivity() {
                         } catch (e: Exception) {
                             result.error("AUDIO_SEEK_ERR", e.message, null)
                         }
+                    }
+                    "launchPlayBillingTip" -> {
+                        val productId = call.argument<String>("productId") ?: "coffee_tip_1"
+                        // Native stub for in-app billing tip flow
+                        result.success(
+                            mapOf(
+                                "status" to "prepared",
+                                "productId" to productId,
+                                "note" to "Google Play Billing endpoint ready for Play Store release"
+                            )
+                        )
                     }
                     "audioGetStatus" -> {
                         try {

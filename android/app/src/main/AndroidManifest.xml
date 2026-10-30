@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Permessi runtime: Android li chiederà SOLO al momento dell'effettivo utilizzo di Fotocamera o Microfono -->
+    <!-- Optional runtime permissions for camera and microphone -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -27,14 +27,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Share to Self: Testo e Link (es. da Browser, YouTube, Note, Social) -->
+            <!-- Share target: plain text and links -->
             <intent-filter android:label="Keep in Mind">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
 
-            <!-- Share to Self: Immagini singole e multiple -->
+            <!-- Share target: single and multiple images -->
             <intent-filter android:label="Keep in Mind">
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -42,7 +42,7 @@
                 <data android:mimeType="image/*" />
             </intent-filter>
 
-            <!-- Share to Self: Qualsiasi file allegato (PDF, Documenti, Audio, ecc.) -->
+            <!-- Share target: any file attachment -->
             <intent-filter android:label="Keep in Mind">
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
@@ -51,7 +51,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Home Screen Widget (Ultimi 1-5 contenuti salvati in locale) -->
+        <!-- Home screen widget receiver -->
         <receiver
             android:name=".KeepInMindWidgetProvider"
             android:exported="true"

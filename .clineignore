@@ -1,0 +1,38 @@
+﻿# Flutter / Dart build & tool caches (molto pesanti in token)
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+
+# Piattaforme non utilizzate (focus esclusivo su Android)
+ios/
+macos/
+windows/
+linux/
+web/
+
+# Cache e wrapper Gradle / Android generati
+android/.gradle/
+android/app/build/
+android/gradle/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# IDE & configurazioni locali
+.idea/
+.vscode/
+*.iml
+
+# Asset binari e immagini
+assets/
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.ico
+*.jar
+*.so

@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,7 +10,7 @@ import '../../utils/tag_helper.dart';
 import '../widgets/home_widget_preview.dart';
 import 'item_detail_screen.dart';
 
-/// Vista dedicata esclusivamente alla configurazione del Widget Home Screen.
+/// Home screen widget preview and configuration view.
 class WidgetConfigView extends StatelessWidget {
   final StorageService storage;
   final VoidCallback? onQuickAddTap;
@@ -206,7 +208,7 @@ class WidgetConfigView extends StatelessWidget {
   }
 }
 
-/// Vista dedicata alla configurazione dell'App, Esportazione/Importazione JSON e Privacy.
+/// App settings, JSON backup/restore, and privacy view.
 class AppAndExportView extends StatelessWidget {
   final StorageService storage;
   final ShareIntentService? shareService;
@@ -241,6 +243,8 @@ class AppAndExportView extends StatelessWidget {
               pinnedCount: pinnedCount,
               tagsCount: tagsCount,
             ),
+            const SizedBox(height: 20),
+            _buildCreditsAndSupportCard(context, scheme),
           ],
         );
       },
@@ -498,17 +502,86 @@ class AppAndExportView extends StatelessWidget {
 
   void _showImportDialog(BuildContext context) {
     final ctrl = TextEditingController();
+
+    Future<void> processJsonString(String rawJson) async {
+      try {
+        final result = await storage.importBackupJson(rawJson);
+        final added = result['addedCount'] ?? 0;
+        final merged = result['mergedTagsCount'] ?? 0;
+        final skipped = result['skippedDuplicates'] ?? 0;
+
+        if (context.mounted) {
+          Navigator.of(context).pop();
+          final parts = <String>[];
+          if (added > 0) parts.add('Importati $added nuovi');
+          if (merged > 0) parts.add('$merged tag uniti');
+          if (skipped > 0) parts.add('$skipped duplicati saltati');
+          final msg = parts.isEmpty
+              ? 'Nessuna modifica: contenuti già presenti'
+              : parts.join(' · ');
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Formato JSON non valido'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    }
+
     showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Importa Backup JSON'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: 'Incolla qui il JSON esportato da Keep in Mind...',
-            border: OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: ctrl,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                hintText: 'Incolla qui il JSON esportato...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () async {
+                try {
+                  final picked = await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['json', 'txt'],
+                    withData: true,
+                  );
+                  if (picked != null && picked.files.isNotEmpty) {
+                    final bytes = picked.files.first.bytes;
+                    if (bytes != null) {
+                      final jsonStr = utf8.decode(bytes);
+                      if (ctx.mounted) {
+                        Navigator.of(ctx).pop();
+                      }
+                      await processJsonString(jsonStr);
+                    }
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Errore lettura file: $e')),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.folder_open_rounded, size: 18),
+              label: const Text('Scegli file .json dal dispositivo'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -516,28 +589,7 @@ class AppAndExportView extends StatelessWidget {
             child: const Text('Annulla'),
           ),
           FilledButton(
-            onPressed: () async {
-              try {
-                final count =
-                    await storage.importBackupJson(ctrl.text.trim());
-                if (ctx.mounted) {
-                  Navigator.of(ctx).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Importati $count nuovi elementi!'),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (ctx.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Formato JSON non valido'),
-                    ),
-                  );
-                }
-              }
-            },
+            onPressed: () => processJsonString(ctrl.text.trim()),
             child: const Text('Importa'),
           ),
         ],
@@ -568,6 +620,136 @@ class AppAndExportView extends StatelessWidget {
             child: const Text('Elimina tutto'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCreditsAndSupportCard(BuildContext context, ColorScheme scheme) {
+    const mediaChannel = MethodChannel('com.example.keep_in_mind/media');
+
+    Future<void> handleTip(String productId, String title, String price) async {
+      try {
+        await mediaChannel.invokeMethod('launchPlayBillingTip', {
+          'productId': productId,
+        });
+      } catch (_) {}
+
+      if (context.mounted) {
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.coffee_rounded, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text(title),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Supporto simbolico: $price',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Grazie di cuore per voler supportare Keep in Mind!\n'
+                  'Questa opzione è conforme alle policy di Google Play e in produzione collegherà il prodotto in-app di Google Play Console.',
+                  style: TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Chiudi'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: scheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.coffee_rounded,
+                    color: Colors.amber,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Credits & Support · Buy Me a Coffee',
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Keep in Mind è un progetto indipendente gratuito, senza annunci e senza tracciamento. '
+              'Tutti i dati rimangono sul tuo dispositivo. Se l\'app ti piace e vuoi supportarne la manutenzione, puoi offrirmi simbolicamente un caffè!',
+              style: TextStyle(fontSize: 13, color: scheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  avatar: const Text('☕'),
+                  label: const Text('Un Caffè · 1,99 €'),
+                  onPressed: () =>
+                      handleTip('coffee_tip_1', 'Un Caffè ☕', '1,99 €'),
+                ),
+                ActionChip(
+                  avatar: const Text('🥐'),
+                  label: const Text('Caffè & Brioche · 3,99 €'),
+                  onPressed: () => handleTip(
+                      'coffee_tip_2', 'Caffè & Brioche 🥐', '3,99 €'),
+                ),
+                ActionChip(
+                  avatar: const Text('🚀'),
+                  label: const Text('Super Supporto · 7,99 €'),
+                  onPressed: () => handleTip(
+                      'coffee_tip_3', 'Super Supporto 🚀', '7,99 €'),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            Center(
+              child: Text(
+                'Keep in Mind · v1.0.0 · 100% Local-First',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.8),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

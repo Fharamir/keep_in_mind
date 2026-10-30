@@ -161,8 +161,7 @@ class MemoryItem {
     );
   }
 
-  /// Analizza un contenuto condiviso (testo, link, immagine o file) e costruisce
-  /// automaticamente un [MemoryItem] strutturato con dominio, titolo e tag suggeriti.
+  /// Parses shared or manual input into a structured [MemoryItem].
   static MemoryItem fromSharedPayload({
     required String id,
     String? rawText,

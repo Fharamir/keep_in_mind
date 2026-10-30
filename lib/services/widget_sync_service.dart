@@ -8,7 +8,7 @@ class WidgetSyncService {
   static const MethodChannel _channel =
       MethodChannel('com.example.keep_in_mind/widget');
 
-  /// Seleziona gli ultimi 1-5 contenuti da mostrare nel Widget in base a [config].
+  /// Selects up to 5 items for the widget based on [config].
   static List<MemoryItem> selectWidgetItems(
     List<MemoryItem> allItems,
     WidgetConfig config,
@@ -35,8 +35,7 @@ class WidgetSyncService {
     return list.take(limit).toList();
   }
 
-  /// Sincronizza i dati con il Widget nativo Android (AppWidgetProvider)
-  /// e iOS (App Group UserDefaults per WidgetKit).
+  /// Syncs widget payload with native home screen widgets.
   static Future<void> syncWidget({
     required List<MemoryItem> allItems,
     required WidgetConfig config,
@@ -81,7 +80,7 @@ class WidgetSyncService {
         'payloadJson': jsonEncode(payload),
       });
     } catch (_) {
-      // Ignorato su piattaforme desktop o durante i test unitari
+      // Ignored on unsupported platforms or during tests
     }
   }
 }

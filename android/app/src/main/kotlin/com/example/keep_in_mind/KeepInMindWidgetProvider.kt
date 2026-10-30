@@ -10,6 +10,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.view.View
+import android.os.Build
 import android.widget.RemoteViews
 import org.json.JSONArray
 import org.json.JSONObject
@@ -74,10 +75,27 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 PendingIntent.getActivity(context, 999, quickAddIntent, flags)
             )
 
-            views.removeAllViews(R.id.widget_rows_container)
+            // Mutable PendingIntent template required on API 31+ for item fill-in intents
+            val mutableFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val itemTemplateIntent = Intent(context, MainActivity::class.java).apply {
+                action = ACTION_OPEN_ITEM
+                this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val itemTemplatePending = PendingIntent.getActivity(
+                context,
+                500,
+                itemTemplateIntent,
+                mutableFlags
+            )
+            views.setPendingIntentTemplate(R.id.widget_list_view, itemTemplatePending)
 
             if (rawJson.isNullOrEmpty()) {
                 views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+                views.setViewVisibility(R.id.widget_list_view, View.GONE)
                 views.setTextViewText(R.id.widget_count, "Ultimi 0/3")
                 views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale · 0 salvati")
                 appWidgetManager.updateAppWidget(appWidgetId, views)
@@ -99,16 +117,26 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
 
                 if (count == 0) {
                     views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+                    views.setViewVisibility(R.id.widget_list_view, View.GONE)
                 } else {
                     views.setViewVisibility(R.id.widget_empty, View.GONE)
-                    for (i in 0 until count) {
-                        val item = items.getJSONObject(i)
-                        val rowView = buildRowRemoteView(context, item, i, flags)
-                        views.addView(R.id.widget_rows_container, rowView)
+                    views.setViewVisibility(R.id.widget_list_view, View.VISIBLE)
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        val builder = RemoteViews.RemoteCollectionItems.Builder()
+                            .setHasStableIds(true)
+                            .setViewTypeCount(1)
+                        for (i in 0 until count) {
+                            val item = items.getJSONObject(i)
+                            val rowView = buildRowRemoteView(context, item)
+                            builder.addItem(i.toLong(), rowView)
+                        }
+                        views.setRemoteAdapter(R.id.widget_list_view, builder.build())
                     }
                 }
             } catch (_: Exception) {
                 views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+                views.setViewVisibility(R.id.widget_list_view, View.GONE)
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
@@ -116,9 +144,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
 
         private fun buildRowRemoteView(
             context: Context,
-            item: JSONObject,
-            index: Int,
-            flags: Int
+            item: JSONObject
         ): RemoteViews {
             val row = RemoteViews(context.packageName, R.layout.keep_in_mind_widget_row)
             val id = item.optString("id", "")
@@ -180,17 +206,10 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 row.setTextViewText(R.id.row_icon, iconEmoji)
             }
 
-            val itemIntent = Intent(context, MainActivity::class.java).apply {
-                action = ACTION_OPEN_ITEM
+            val fillInIntent = Intent().apply {
                 putExtra(EXTRA_ITEM_ID, id)
-                this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
-            val openPending = PendingIntent.getActivity(context, 100 + index, itemIntent, flags)
-            row.setOnClickPendingIntent(R.id.row_title, openPending)
-            row.setOnClickPendingIntent(R.id.row_subtitle, openPending)
-            row.setOnClickPendingIntent(R.id.row_tags, openPending)
-            row.setOnClickPendingIntent(R.id.row_img, openPending)
-            row.setOnClickPendingIntent(R.id.row_icon, openPending)
+            row.setOnClickFillInIntent(R.id.row_root, fillInIntent)
 
             return row
         }

@@ -113,7 +113,7 @@ void main() {
     expect(find.text('Keep in Mind'), findsWidgets);
     expect(find.text('Locale'), findsOneWidget);
 
-    // Simula l'arrivo di una condivisione dal Sistema Operativo ("Share to Self")
+    // Simulate incoming OS share payload
     shareService.simulateIncomingShare(
       const SharedIncomingPayload(
         subject: 'Articolo Test Privacy',

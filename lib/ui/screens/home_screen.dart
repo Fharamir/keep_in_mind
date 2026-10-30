@@ -51,13 +51,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _onIncomingPayload(SharedIncomingPayload payload) async {
-    // 1. Se proviene da un tap sul pulsante "+" del Widget Home Screen
+    // Quick-add action from widget
     if (payload.quickAddRequested) {
       if (mounted) _openAddSheet();
       return;
     }
 
-    // 2. Se proviene da un tap su uno degli ultimi 1-5 elementi del Widget Home Screen
+    // Open specific item from widget
     if (payload.openItemId != null && payload.openItemId!.isNotEmpty) {
       await widget.storage.reloadFromDisk();
       final target = widget.storage.getById(payload.openItemId!);
@@ -67,7 +67,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
 
-    // 3. Se proviene da "Share to Self" (Condividi dal Sistema Operativo)
+    // Save incoming shared content
     if (payload.hasSharedContent) {
       final saved = await widget.storage.addSharedOrManualItem(
         rawText: payload.text,

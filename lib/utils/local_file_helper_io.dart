@@ -5,8 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 class LocalFileHelper {
-  /// Copia un file dalla cache temporanea del sistema operativo nella memoria
-  /// privata permanente dell'app (`keep_in_mind_attachments`).
+  /// Copies a file or byte array into the persistent attachments directory.
   static Future<String?> persistFileLocally({
     String? sourcePath,
     Uint8List? bytes,
@@ -28,7 +27,7 @@ class LocalFileHelper {
       if (sourcePath != null && sourcePath.isNotEmpty) {
         final srcFile = File(sourcePath);
         if (await srcFile.exists()) {
-          // Se è già nella cartella attachments, non duplicarlo
+          // Skip copy if already in the attachments directory
           if (sourcePath.contains('keep_in_mind_attachments')) {
             return sourcePath;
           }
@@ -48,7 +47,7 @@ class LocalFileHelper {
     return sourcePath;
   }
 
-  /// Legge la dimensione in byte di un file locale se presente.
+  /// Returns local file size in bytes, or null if unavailable.
   static Future<int?> getFileSize(String? path) async {
     if (path == null || path.isEmpty) return null;
     try {
@@ -60,7 +59,7 @@ class LocalFileHelper {
     return null;
   }
 
-  /// Elimina un file allegato dalla memoria locale dell'app.
+  /// Deletes a local attachment file if it exists.
   static Future<void> deleteLocalFile(String? path) async {
     if (path == null || path.isEmpty) return;
     try {
@@ -71,7 +70,7 @@ class LocalFileHelper {
     } catch (_) {}
   }
 
-  /// Legge il contenuto testuale di un file locale (per anteprima di .txt, .md, .json, ecc.)
+  /// Reads up to [maxChars] from a local text file for preview.
   static Future<String?> readTextFilePreview(String? path, {int maxChars = 2000}) async {
     if (path == null || path.isEmpty) return null;
     try {
@@ -85,7 +84,7 @@ class LocalFileHelper {
     return null;
   }
 
-  /// Restituisce un Widget immagine a partire da percorso locale o base64.
+  /// Builds an image widget from a local file path or base64 data.
   static Widget buildLocalImage({
     String? filePath,
     String? base64Data,

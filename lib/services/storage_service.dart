@@ -13,11 +13,13 @@ class StorageService extends ChangeNotifier {
   static const String _widgetConfigKey = 'kim_widget_config_v1';
   static const String _seededKey = 'kim_initial_seed_v1';
   static const String _confirmDeleteKey = 'kim_confirm_delete_v1';
+  static const String _customTagsKey = 'kim_custom_tags_v1';
 
   final Uuid _uuid = const Uuid();
   SharedPreferences? _prefs;
 
   List<MemoryItem> _items = [];
+  final Set<String> _customTags = {};
   WidgetConfig _widgetConfig = const WidgetConfig(
     maxItems: 3,
     prioritizePinned: true,
@@ -40,7 +42,7 @@ class StorageService extends ChangeNotifier {
   bool get confirmBeforeDelete => _confirmBeforeDelete;
   bool get isLoaded => _isLoaded;
 
-  /// Restituisce gli ultimi 1-5 contenuti calcolati per il Widget Home Screen.
+  /// Items selected for the home screen widget.
   List<MemoryItem> get widgetItems =>
       WidgetSyncService.selectWidgetItems(_items, _widgetConfig);
 
@@ -53,9 +55,9 @@ class StorageService extends ChangeNotifier {
   ];
   static const Set<String> _deprecatedSeedTags = {'privacy', 'locale', 'guida'};
 
-  /// Restituisce tutti i tag unici presenti nella libreria locale (inclusi i 5 tag base).
+  /// All unique tags in the local library, including defaults.
   List<String> get availableTags {
-    final tagSet = <String>{...defaultTags};
+    final tagSet = <String>{...defaultTags, ..._customTags};
     for (final item in _items) {
       for (final tag in item.tags) {
         if (!_deprecatedSeedTags.contains(tag)) {
@@ -66,7 +68,7 @@ class StorageService extends ChangeNotifier {
     return tagSet.toList();
   }
 
-  /// Restituisce la lista filtrata e ordinata per la schermata principale.
+  /// Filtered and sorted items for the main feed.
   List<MemoryItem> get filteredItems {
     final q = _searchQuery.trim().toLowerCase();
     final filtered = _items.where((item) {
@@ -114,8 +116,7 @@ class StorageService extends ChangeNotifier {
     );
   }
 
-  /// Ricarica da disco eventuali nuovi elementi salvati in background dal codice nativo
-  /// (es. durante il flusso silenzioso "Share to Self").
+  /// Reloads items from disk to sync background changes.
   Future<void> reloadFromDisk() async {
     final prefs = _prefs ?? await SharedPreferences.getInstance();
     _prefs = prefs;
@@ -135,6 +136,17 @@ class StorageService extends ChangeNotifier {
     if (prefs == null) return;
 
     _confirmBeforeDelete = prefs.getBool(_confirmDeleteKey) ?? true;
+
+    final rawCustomTags = prefs.getStringList(_customTagsKey);
+    if (rawCustomTags != null) {
+      _customTags.clear();
+      for (final t in rawCustomTags) {
+        final clean = t.trim().toLowerCase();
+        if (clean.isNotEmpty && !_deprecatedSeedTags.contains(clean)) {
+          _customTags.add(clean);
+        }
+      }
+    }
 
     final rawConfig = prefs.getString(_widgetConfigKey);
     if (rawConfig != null && rawConfig.isNotEmpty) {
@@ -180,6 +192,7 @@ class StorageService extends ChangeNotifier {
     if (prefs == null) return;
     final encoded = jsonEncode(_items.map((e) => e.toJson()).toList());
     await prefs.setString(_itemsStorageKey, encoded);
+    await prefs.setStringList(_customTagsKey, _customTags.toList());
     unawaited(
       WidgetSyncService.syncWidget(
         allItems: _items,
@@ -357,33 +370,104 @@ class StorageService extends ChangeNotifier {
       'version': 1,
       'exportedAt': DateTime.now().toIso8601String(),
       'widgetConfig': _widgetConfig.toJson(),
+      'customTags': _customTags.toList(),
       'items': _items.map((e) => e.toJson()).toList(),
     };
     return const JsonEncoder.withIndent('  ').convert(payload);
   }
 
-  Future<int> importBackupJson(String jsonString) async {
+  Future<Map<String, int>> importBackupJson(String jsonString) async {
     final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
     final rawList = decoded['items'] as List<dynamic>? ?? const [];
-    final existingIds = _items.map((e) => e.id).toSet();
+    final rawCustomTags = decoded['customTags'] as List<dynamic>? ?? const [];
+
     int addedCount = 0;
+    int mergedTagsCount = 0;
+    int skippedDuplicates = 0;
+
+    for (final t in rawCustomTags) {
+      final clean = t.toString().trim().toLowerCase();
+      if (clean.isNotEmpty &&
+          !defaultTags.contains(clean) &&
+          !_deprecatedSeedTags.contains(clean)) {
+        if (_customTags.add(clean)) {
+          mergedTagsCount++;
+        }
+      }
+    }
 
     for (final raw in rawList) {
       if (raw is Map<String, dynamic>) {
-        final item = MemoryItem.fromJson(raw);
-        if (item.id.isNotEmpty && !existingIds.contains(item.id)) {
-          _items.add(item);
-          existingIds.add(item.id);
+        final importedItem = MemoryItem.fromJson(raw);
+        if (importedItem.id.isEmpty && importedItem.title.isEmpty) continue;
+
+        // Sanitize imported tags
+        final cleanTags = importedItem.tags
+            .map((e) => e.trim().toLowerCase())
+            .where((e) => e.isNotEmpty && !_deprecatedSeedTags.contains(e))
+            .toList();
+
+        for (final tag in cleanTags) {
+          if (!defaultTags.contains(tag) && _customTags.add(tag)) {
+            mergedTagsCount++;
+          }
+        }
+
+        final fixedItem = importedItem.id.isEmpty
+            ? importedItem.copyWith(id: _uuid.v4(), tags: cleanTags)
+            : importedItem.copyWith(tags: cleanTags);
+
+        // Match duplicates by ID, URL, or title and content
+        final existingIndex = _items.indexWhere((existing) {
+          if (existing.id == fixedItem.id) return true;
+          if (existing.type == fixedItem.type) {
+            if (existing.url != null &&
+                fixedItem.url != null &&
+                existing.url!.trim().isNotEmpty &&
+                existing.url!.trim() == fixedItem.url!.trim()) {
+              return true;
+            }
+            if (existing.title.trim().toLowerCase() ==
+                    fixedItem.title.trim().toLowerCase() &&
+                existing.content.trim() == fixedItem.content.trim()) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        if (existingIndex != -1) {
+          // Merge new tags into existing duplicate
+          final current = _items[existingIndex];
+          final mergedTags = {...current.tags, ...fixedItem.tags}.toList();
+          if (mergedTags.length > current.tags.length) {
+            _items[existingIndex] = current.copyWith(tags: mergedTags);
+            mergedTagsCount++;
+          }
+          skippedDuplicates++;
+        } else {
+          _items.insert(0, fixedItem);
           addedCount++;
         }
       }
     }
 
-    if (addedCount > 0) {
+    if (addedCount > 0 || mergedTagsCount > 0) {
+      _items.sort((a, b) {
+        if (a.isPinned != b.isPinned) {
+          return a.isPinned ? -1 : 1;
+        }
+        return b.createdAt.compareTo(a.createdAt);
+      });
       notifyListeners();
       await _saveItemsToPrefs();
     }
-    return addedCount;
+
+    return {
+      'addedCount': addedCount,
+      'mergedTagsCount': mergedTagsCount,
+      'skippedDuplicates': skippedDuplicates,
+    };
   }
 
   List<MemoryItem> _createWelcomeItems() {

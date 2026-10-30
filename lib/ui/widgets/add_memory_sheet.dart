@@ -24,6 +24,8 @@ class AddMemorySheet extends StatefulWidget {
 class _AddMemorySheetState extends State<AddMemorySheet> {
   static const MethodChannel _mediaChannel =
       MethodChannel('com.example.keep_in_mind/media');
+  static const int _maxRecordingSeconds = 300; // 5 minutes
+  static const int _maxAttachmentSizeBytes = 50 * 1024 * 1024; // 50 MB
 
   late final TextEditingController _contentController;
   late final TextEditingController _titleController;
@@ -191,11 +193,22 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
             _recordingSeconds = 0;
           });
           _recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-            if (mounted) {
-              setState(() {
-                _recordingSeconds++;
-              });
+            if (!mounted) return;
+            if (_recordingSeconds + 1 >= _maxRecordingSeconds) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  behavior: SnackBarBehavior.floating,
+                  content: Text(
+                    'Raggiunto il limite massimo di 5 minuti: registrazione salvata.',
+                  ),
+                ),
+              );
+              _toggleAudioRecording();
+              return;
             }
+            setState(() {
+              _recordingSeconds++;
+            });
           });
         }
       } on PlatformException catch (e) {
@@ -225,6 +238,17 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
       );
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
+        if (file.size > _maxAttachmentSizeBytes) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                behavior: SnackBarBehavior.floating,
+                content: Text('Il file supera il limite massimo consentito di 50 MB.'),
+              ),
+            );
+          }
+          return;
+        }
         final ext = (file.extension ?? '').toLowerCase();
         String mime = 'application/octet-stream';
         String defaultTag = 'file';
@@ -362,7 +386,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
     final availableTags = widget.storage.availableTags;
 
     void addNewTag() {
-      // Pulisce il testo: solo caratteri alfanumerici, trattini o underscore, senza spazi e simboli strani
+      // Keep only alphanumeric characters, hyphens, and underscores
       final raw = _newTagController.text.trim().toLowerCase();
       final sanitized = raw
           .replaceAll(RegExp(r'[^a-z0-9\-_]'), '')
@@ -507,7 +531,7 @@ class _AddMemorySheetState extends State<AddMemorySheet> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Registrazione vocale in corso... ${_recordingSeconds}s (tocca stop per allegare)',
+                    'Registrazione vocale in corso... ${_recordingSeconds}s / ${_maxRecordingSeconds}s (tocca stop per allegare)',
                     style: const TextStyle(
                       color: Colors.red,
                       fontWeight: FontWeight.w700,

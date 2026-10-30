@@ -22,8 +22,7 @@ class ItemDetailScreen extends StatefulWidget {
     this.openedFromWidget = false,
   });
 
-  /// Esegue la cancellazione di un contenuto chiedendo conferma all'utente
-  /// se l'impostazione [storage.confirmBeforeDelete] è attiva.
+  /// Deletes [item], prompting for confirmation if enabled in [storage].
   static Future<bool> confirmAndDelete(
     BuildContext context,
     StorageService storage,
@@ -244,7 +243,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // Sorgente e data
+          // Source and creation date
           Row(
             children: [
               Icon(Icons.shield_outlined, size: 15, color: scheme.primary),

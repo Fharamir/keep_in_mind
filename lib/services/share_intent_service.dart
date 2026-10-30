@@ -56,22 +56,21 @@ class ShareIntentService {
 
   Stream<SharedIncomingPayload> get incomingStream => _controller.stream;
 
-  /// Inizializza l'ascolto delle condivisioni in ingresso dal Sistema Operativo
-  /// (Android Intent ACTION_SEND, iOS Share Extension / URL Scheme, Web Share Target API).
+  /// Initializes listeners for incoming OS share intents and widget actions.
   Future<void> init() async {
     if (kIsWeb) {
       _checkWebShareTargetParams();
       return;
     }
 
-    // 1. Controlla se l'app è stata avviata tramite "Share to Self" o tap sul Widget
+    // Check initial launch payload
     try {
       final initialData =
           await _methodChannel.invokeMethod<dynamic>('getInitialSharedPayload');
       _handleRawPayload(initialData);
     } catch (_) {}
 
-    // 2. Ascolta nuove condivisioni o tap sul Widget mentre l'app è già aperta
+    // Listen for incoming payloads while running
     try {
       _sub = _eventChannel.receiveBroadcastStream().listen(
         (dynamic event) {
@@ -135,8 +134,7 @@ class ShareIntentService {
     } catch (_) {}
   }
 
-  /// Permette di simulare una condivisione dal SO per testare il flusso "Share to Self"
-  /// su qualsiasi piattaforma (incluso Web o emulatore).
+  /// Emits a simulated share payload for testing.
   void simulateIncomingShare(SharedIncomingPayload payload) {
     _controller.add(payload);
   }
