@@ -194,11 +194,11 @@ void main() {
     await tester.pump();
 
     // Verifica controlli visibili con i loro default (audio: 5m, file: No limit)
-    expect(find.text('Lunghezza massima audio:'), findsOneWidget);
+    expect(find.text(storage.l10n.prefMaxAudioDuration), findsOneWidget);
     expect(find.text('5m'), findsOneWidget);
 
-    expect(find.text('Dimensione massima file:'), findsOneWidget);
-    expect(find.text('Nessun limite'), findsOneWidget);
+    expect(find.text(storage.l10n.prefMaxFileSize), findsOneWidget);
+    expect(find.text(storage.l10n.optionNoLimit), findsOneWidget);
 
     // Con audio a 5m, il messaggio di avviso NON deve essere presente
     expect(

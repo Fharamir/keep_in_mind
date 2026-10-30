@@ -534,7 +534,7 @@ class AppLocalizations {
       case AppLanguage.pt:
         return 'Nota de voz (${durationSec}s)';
       case AppLanguage.zh:
-        return '语音笔记 (${durationSec}秒)';
+        return '语音笔记 ($durationSec秒)';
       case AppLanguage.en:
       default:
         return 'Voice note (${durationSec}s)';

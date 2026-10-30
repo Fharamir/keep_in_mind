@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../services/share_intent_service.dart';
 import '../../services/storage_service.dart';

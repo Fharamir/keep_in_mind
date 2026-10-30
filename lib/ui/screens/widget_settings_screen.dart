@@ -97,19 +97,23 @@ class WidgetConfigView extends StatelessWidget {
               children: [
                 Icon(Icons.widgets_outlined, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  strings.widgetConfigCardTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                Expanded(
+                  child: Text(
+                    strings.widgetConfigCardTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 16),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(strings.widgetConfigItemsCount),
+                Expanded(
+                  child: Text(strings.widgetConfigItemsCount),
+                ),
+                const SizedBox(width: 8),
                 Chip(
                   label: Text(
                     '${config.maxItems}',
@@ -275,32 +279,39 @@ class AppAndExportView extends StatelessWidget {
               children: [
                 Icon(Icons.translate_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  strings.languageSettingsTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                Expanded(
+                  child: Text(
+                    strings.languageSettingsTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
-                const Spacer(),
-                if (currentOverride == null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      strings.languageAutoSystem,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: scheme.primary,
+                if (currentOverride == null) ...[
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        strings.languageAutoSystem,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.primary,
+                        ),
                       ),
                     ),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 8),
@@ -310,6 +321,7 @@ class AppAndExportView extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             DropdownButtonFormField<String?>(
+              isExpanded: true,
               initialValue: currentOverride,
               decoration: InputDecoration(
                 contentPadding: const EdgeInsets.symmetric(
@@ -327,9 +339,13 @@ class AppAndExportView extends StatelessWidget {
                     children: [
                       const Text('🌐', style: TextStyle(fontSize: 18)),
                       const SizedBox(width: 10),
-                      Text(
-                        '${strings.languageAutoSystem} (${effectiveLang.label})',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      Expanded(
+                        child: Text(
+                          '${strings.languageAutoSystem} (${effectiveLang.label})',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                       ),
                     ],
                   ),
@@ -341,12 +357,16 @@ class AppAndExportView extends StatelessWidget {
                       children: [
                         Text(lang.flag, style: const TextStyle(fontSize: 18)),
                         const SizedBox(width: 10),
-                        Text(
-                          '${lang.label} (${lang.code.toUpperCase()})',
-                          style: TextStyle(
-                            fontWeight: currentOverride == lang.code
-                                ? FontWeight.w800
-                                : FontWeight.w500,
+                        Expanded(
+                          child: Text(
+                            '${lang.label} (${lang.code.toUpperCase()})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: currentOverride == lang.code
+                                  ? FontWeight.w800
+                                  : FontWeight.w500,
+                            ),
                           ),
                         ),
                       ],
@@ -382,11 +402,13 @@ class AppAndExportView extends StatelessWidget {
               children: [
                 Icon(Icons.ios_share_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  strings.backupCardTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                Expanded(
+                  child: Text(
+                    strings.backupCardTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
               ],
             ),
@@ -463,11 +485,13 @@ class AppAndExportView extends StatelessWidget {
               children: [
                 Icon(Icons.settings_suggest_rounded, color: scheme.primary),
                 const SizedBox(width: 8),
-                Text(
-                  strings.preferencesCardTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                Expanded(
+                  child: Text(
+                    strings.preferencesCardTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
               ],
             ),
@@ -514,22 +538,26 @@ class AppAndExportView extends StatelessWidget {
             ),
             const Divider(height: 24),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.mic_none_rounded,
-                      size: 20,
-                      color: scheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      strings.prefMaxAudioDuration,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.mic_none_rounded,
+                        size: 20,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          strings.prefMaxAudioDuration,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Chip(
                   label: Text(
                     StorageService.formatAudioDurationOption(
@@ -595,22 +623,26 @@ class AppAndExportView extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.attach_file_rounded,
-                      size: 20,
-                      color: scheme.primary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      strings.prefMaxFileSize,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.attach_file_rounded,
+                        size: 20,
+                        color: scheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          strings.prefMaxFileSize,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 8),
                 Chip(
                   label: Text(
                     StorageService.formatFileSizeOption(
@@ -731,10 +763,12 @@ class AppAndExportView extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             value,
+            textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
           ),
           Text(
             label,
+            textAlign: TextAlign.center,
             style: TextStyle(fontSize: 11, color: scheme.onSurfaceVariant),
           ),
         ],
@@ -946,11 +980,13 @@ class AppAndExportView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  strings.creditsCardTitle,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                Expanded(
+                  child: Text(
+                    strings.creditsCardTitle,
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                  ),
                 ),
               ],
             ),
