@@ -46,9 +46,9 @@ class SharedIncomingPayload {
 
 class ShareIntentService {
   static const MethodChannel _methodChannel =
-      MethodChannel('com.example.keep_in_mind/share');
+      MethodChannel('dev.fharamir.keepinmind/share');
   static const EventChannel _eventChannel =
-      EventChannel('com.example.keep_in_mind/share_stream');
+      EventChannel('dev.fharamir.keepinmind/share_stream');
 
   StreamSubscription<dynamic>? _sub;
   final StreamController<SharedIncomingPayload> _controller =

@@ -66,7 +66,7 @@ class ItemDetailScreen extends StatefulWidget {
 
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
   static const MethodChannel _mediaChannel =
-      MethodChannel('com.example.keep_in_mind/media');
+      MethodChannel('dev.fharamir.keepinmind/media');
 
   late MemoryItem _current;
   late TextEditingController _titleController;

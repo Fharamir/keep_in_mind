@@ -7,7 +7,7 @@ import '../utils/tag_helper.dart';
 
 class WidgetSyncService {
   static const MethodChannel _channel =
-      MethodChannel('com.example.keep_in_mind/widget');
+      MethodChannel('dev.fharamir.keepinmind/widget');
 
   /// Selects up to 5 items for the widget based on [config].
   static List<MemoryItem> selectWidgetItems(

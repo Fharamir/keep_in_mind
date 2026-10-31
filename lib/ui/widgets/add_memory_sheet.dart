@@ -24,7 +24,7 @@ class AddMemorySheet extends StatefulWidget {
 
 class _AddMemorySheetState extends State<AddMemorySheet> {
   static const MethodChannel _mediaChannel =
-      MethodChannel('com.example.keep_in_mind/media');
+      MethodChannel('dev.fharamir.keepinmind/media');
 
   late final TextEditingController _contentController;
   late final TextEditingController _titleController;

@@ -304,7 +304,7 @@ class HomeWidgetPreview extends StatelessWidget {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                    if (effectiveTags.isNotEmpty)
+                    if (config.showTags && effectiveTags.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(

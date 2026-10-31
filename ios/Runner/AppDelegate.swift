@@ -3,7 +3,7 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
-  private let appGroupId = "group.com.example.keep_in_mind"
+  private let appGroupId = "group.dev.fharamir.keepinmind"
   private let widgetKey = "widget_payload_json"
   private let sharedInboxKey = "shared_inbox_payload"
 
@@ -20,7 +20,7 @@ import UIKit
     let messenger = engineBridge.applicationRegistrar.messenger()
 
     let shareChannel = FlutterMethodChannel(
-      name: "com.example.keep_in_mind/share",
+      name: "dev.fharamir.keepinmind/share",
       binaryMessenger: messenger
     )
     shareChannel.setMethodCallHandler { [weak self] call, result in
@@ -39,7 +39,7 @@ import UIKit
     }
 
     let widgetChannel = FlutterMethodChannel(
-      name: "com.example.keep_in_mind/widget",
+      name: "dev.fharamir.keepinmind/widget",
       binaryMessenger: messenger
     )
     widgetChannel.setMethodCallHandler { [weak self] call, result in

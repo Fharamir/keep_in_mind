@@ -14,7 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  const widgetChannel = MethodChannel('com.example.keep_in_mind/widget');
+  const widgetChannel = MethodChannel('dev.fharamir.keepinmind/widget');
   String? lastWidgetPayloadJson;
 
   setUp(() {
