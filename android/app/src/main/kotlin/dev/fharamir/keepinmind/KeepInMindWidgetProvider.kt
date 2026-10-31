@@ -145,6 +145,10 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                             builder.addItem(itemId.hashCode().toLong(), rowView)
                         }
                         views.setRemoteAdapter(R.id.widget_list_view, builder.build())
+                    } else {
+                        views.setViewVisibility(R.id.widget_list_view, View.GONE)
+                        views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
+                        views.setTextViewText(R.id.widget_empty, emptyLabel.ifEmpty { "Keep in Mind" })
                     }
                 }
             } catch (_: Exception) {
@@ -287,18 +291,40 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
 
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(file.absolutePath, bounds)
-                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+                val width = bounds.outWidth
+                val height = bounds.outHeight
+                if (width <= 0 || height <= 0) return null
 
                 var sampleSize = 1
-                while (bounds.outWidth / sampleSize > maxSize * 2 &&
-                    bounds.outHeight / sampleSize > maxSize * 2
+                while (width / sampleSize > maxSize * 2 &&
+                    height / sampleSize > maxSize * 2
                 ) {
                     sampleSize *= 2
                 }
 
                 val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
                 val decoded = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
-                Bitmap.createScaledBitmap(decoded, maxSize, maxSize, true)
+
+                // Center-crop to a square to maintain aspect ratio without distortion
+                val minEdge = Math.min(decoded.width, decoded.height)
+                val cropX = (decoded.width - minEdge) / 2
+                val cropY = (decoded.height - minEdge) / 2
+                val cropped = Bitmap.createBitmap(decoded, cropX, cropY, minEdge, minEdge)
+
+                val scaled = if (cropped.width != maxSize || cropped.height != maxSize) {
+                    Bitmap.createScaledBitmap(cropped, maxSize, maxSize, true)
+                } else {
+                    cropped
+                }
+
+                if (cropped != decoded && cropped != scaled) {
+                    cropped.recycle()
+                }
+                if (decoded != scaled) {
+                    decoded.recycle()
+                }
+
+                scaled
             } catch (_: Exception) {
                 null
             }

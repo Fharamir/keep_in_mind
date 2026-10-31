@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="widget_description">Mostra gli ultimi 1-5 contenuti salvati con Keep in Mind</string>
+    <string name="widget_label">Keep in Mind (Ultimi 1-5)</string>
 </resources>

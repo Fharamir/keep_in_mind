@@ -651,12 +651,10 @@ class StorageService extends ChangeNotifier {
     return [
       MemoryItem(
         id: _uuid.v4(),
-        type: MemoryItemType.link,
+        type: MemoryItemType.text,
         title: strings.welcomeLinkTitle,
         content: strings.welcomeLinkContent,
-        url: 'https://flutter.dev',
-        domain: 'flutter.dev',
-        tags: const ['link'],
+        tags: const ['nota'],
         isPinned: true,
         createdAt: now.subtract(const Duration(minutes: 5)),
         source: strings.badgeLocal,

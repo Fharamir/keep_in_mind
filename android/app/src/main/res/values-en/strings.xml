@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Shows the latest 1-5 items saved with Keep in Mind</string>
+    <string name="widget_label">Keep in Mind (Recent 1-5)</string>
+</resources>
