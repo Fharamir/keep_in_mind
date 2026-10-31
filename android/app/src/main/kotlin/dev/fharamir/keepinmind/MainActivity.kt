@@ -57,6 +57,7 @@ class MainActivity : FlutterActivity() {
         if (isShareIntent(intent)) {
             super.onCreate(savedInstanceState)
             handleShareIntentDirectly(intent)
+            intent.action = Intent.ACTION_MAIN
             finish()
             return
         }
@@ -67,13 +68,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
         
         if (isShareIntent(intent)) {
             handleShareIntentDirectly(intent)
+            intent.action = Intent.ACTION_MAIN
             moveTaskToBack(true)
             return
         }
+
+        setIntent(intent)
 
         val payload = extractPayloadFromIntent(intent)
         if (payload != null) {
@@ -379,9 +382,14 @@ class MainActivity : FlutterActivity() {
                 try { prefs.getInt("flutter.kim_max_audio_seconds_v1", 300) } catch (_: Exception) { 300 }
             }
             if (maxSeconds > 0) {
-                recorder.setMaxDuration(maxSeconds * 1000)
+                // Add a 2-second safety buffer so Dart's timer can stop recording cleanly first
+                recorder.setMaxDuration((maxSeconds + 2) * 1000)
                 recorder.setOnInfoListener { _, what, _ ->
                     if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                        try {
+                            mediaRecorder?.stop()
+                        } catch (_: Exception) {
+                        }
                         stopAndReleaseRecorder()
                     }
                 }
@@ -572,19 +580,30 @@ class MainActivity : FlutterActivity() {
             if (!uris.isNullOrEmpty()) {
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 val maxFileSizeMb = getMaxFileSizeMb(prefs)
-                val items = uris.map { uri ->
+                val createdFiles = mutableListOf<File>()
+                val items = mutableListOf<Map<String, Any?>>()
+                for (uri in uris) {
                     val fileMeta = copyUriToLocalStorage(uri, mimeType, maxFileSizeMb)
                     if (fileMeta["fileTooLarge"] == true) {
+                        for (f in createdFiles) {
+                            try { if (f.exists()) f.delete() } catch (_: Exception) {}
+                        }
                         return fileMeta
                     }
-                    mapOf(
-                        "text" to sharedText,
-                        "subject" to sharedSubject,
-                        "filePath" to fileMeta["filePath"],
-                        "fileName" to fileMeta["fileName"],
-                        "mimeType" to (fileMeta["mimeType"] ?: mimeType),
-                        "fileSizeBytes" to fileMeta["fileSizeBytes"],
-                        "source" to "Share to Self"
+                    val path = fileMeta["filePath"] as? String
+                    if (path != null) {
+                        createdFiles.add(File(path))
+                    }
+                    items.add(
+                        mapOf(
+                            "text" to sharedText,
+                            "subject" to sharedSubject,
+                            "filePath" to path,
+                            "fileName" to fileMeta["fileName"],
+                            "mimeType" to (fileMeta["mimeType"] ?: mimeType),
+                            "fileSizeBytes" to fileMeta["fileSizeBytes"],
+                            "source" to "Share to Self"
+                        )
                     )
                 }
                 return mapOf("items" to items)
@@ -817,9 +836,47 @@ class MainActivity : FlutterActivity() {
             "es" -> "Ver todo →"
             "fr" -> "Tout voir →"
             "de" -> "Alle anzeigen →"
-            "pt" -> "Ver tutto →"
+            "pt" -> "Ver tudo →"
             "zh" -> "查看全部 →"
             else -> "View all →"
+        }
+    }
+
+    private fun getLocalizedTagLabel(lang: String, tag: String): String {
+        val lower = tag.lowercase().trim()
+        return when (lower) {
+            "immagine", "image" -> when (lang) {
+                "it" -> "Immagine"
+                "es" -> "Imagen"
+                "fr" -> "Image"
+                "de" -> "Bild"
+                "pt" -> "Imagem"
+                "zh" -> "图片"
+                else -> "Image"
+            }
+            "audio" -> when (lang) {
+                "zh" -> "音频"
+                else -> "Audio"
+            }
+            "link" -> when (lang) {
+                "zh" -> "链接"
+                else -> "Link"
+            }
+            "file" -> when (lang) {
+                "es" -> "Archivo"
+                "fr" -> "Fichier"
+                "de" -> "Datei"
+                "zh" -> "文件"
+                else -> "File"
+            }
+            "nota", "note" -> when (lang) {
+                "it", "es", "pt" -> "Nota"
+                "fr" -> "Note"
+                "de" -> "Notiz"
+                "zh" -> "便签"
+                else -> "Note"
+            }
+            else -> lower.replaceFirstChar { ch -> ch.uppercase() }
         }
     }
 
@@ -956,7 +1013,9 @@ class MainActivity : FlutterActivity() {
                     put("createdAt", orig.optString("createdAt", ""))
                     val tArr = orig.optJSONArray("tags")
                     if (tArr != null && tArr.length() > 0) {
-                        val strList = (0 until tArr.length().coerceAtMost(3)).map { tArr.optString(it).replaceFirstChar { ch -> ch.uppercase() } }
+                        val strList = (0 until tArr.length().coerceAtMost(3)).map {
+                            getLocalizedTagLabel(lang, tArr.optString(it))
+                        }
                         put("tags", strList.joinToString(" · "))
                     }
                 }
