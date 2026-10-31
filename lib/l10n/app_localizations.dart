@@ -292,7 +292,6 @@ class AppLocalizations {
   String get creditsDescription => _t('creditsDescription');
   String get coffeeOption1 => _t('coffeeOption1');
   String get coffeeOption2 => _t('coffeeOption2');
-  String get coffeeOption3 => _t('coffeeOption3');
 
   String coffeeThanks(String label) =>
       _tParams('coffeeThanks', {'label': label});

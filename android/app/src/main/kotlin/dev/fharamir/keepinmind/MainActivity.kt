@@ -666,7 +666,7 @@ class MainActivity : FlutterActivity() {
             val oldStr = widgetPrefs.getString(KeepInMindWidgetProvider.KEY_PAYLOAD, null)
             val oldObj = if (oldStr != null) try { org.json.JSONObject(oldStr) } catch (_: Exception) { null } else null
             val addBtnLabel = oldObj?.optString("addBtnLabel", "+ Salva") ?: "+ Salva"
-            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto ÔåÆ") ?: "Visualizza tutto ÔåÆ"
+            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto →") ?: "Visualizza tutto →"
             val emptyLabel = oldObj?.optString("emptyLabel", null)
 
             val candidates = mutableListOf<org.json.JSONObject>()
@@ -702,7 +702,7 @@ class MainActivity : FlutterActivity() {
                     val d = orig.optString("domain", "")
                     val fn = orig.optString("fileName", "")
                     val c = orig.optString("content", "")
-                    put("subtitle", if (d.isNotEmpty()) d else if (fn.isNotEmpty()) fn else if (c.length > 70) "${c.substring(0, 70)}ÔÇª" else c)
+                    put("subtitle", if (d.isNotEmpty()) d else if (fn.isNotEmpty()) fn else if (c.length > 70) "${c.substring(0, 70)}…" else c)
                     val fp = orig.optString("filePath", "")
                     if (fp.isNotEmpty()) put("filePath", fp)
                     val mt = orig.optString("mimeType", "")
@@ -712,7 +712,7 @@ class MainActivity : FlutterActivity() {
                     val tArr = orig.optJSONArray("tags")
                     if (tArr != null && tArr.length() > 0) {
                         val strList = (0 until tArr.length().coerceAtMost(3)).map { tArr.optString(it).replaceFirstChar { ch -> ch.uppercase() } }
-                        put("tags", strList.joinToString(" ┬À "))
+                        put("tags", strList.joinToString(" · "))
                     }
                 }
                 widgetItemsArray.put(row)
@@ -725,7 +725,7 @@ class MainActivity : FlutterActivity() {
                 put("totalCount", allItems.length())
                 put("items", widgetItemsArray)
                 put("countLabel", "Ultimi $limit/$maxItems")
-                put("subtitleLabel", "Memoria locale ┬À ${allItems.length()} salvati")
+                put("subtitleLabel", "Memoria locale · ${allItems.length()} salvati")
                 put("addBtnLabel", addBtnLabel)
                 put("viewAllBtnLabel", viewAllBtnLabel)
                 if (emptyLabel != null) put("emptyLabel", emptyLabel)
@@ -791,7 +791,7 @@ class MainActivity : FlutterActivity() {
                     subject.isNotEmpty() -> subject
                     remainingText.isNotEmpty() -> {
                         val firstLine = remainingText.split("\n").first().trim()
-                        if (firstLine.length > 60) "${firstLine.substring(0, 59)}ÔÇª" else firstLine
+                        if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
                     }
                     !domain.isNullOrEmpty() -> domain
                     else -> url
@@ -809,7 +809,7 @@ class MainActivity : FlutterActivity() {
                     subject
                 } else {
                     val firstLine = text.split("\n").first().trim()
-                    if (firstLine.length > 60) "${firstLine.substring(0, 59)}ÔÇª" else firstLine
+                    if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
                 }
                 json.put("title", if (title.isEmpty()) "Nota" else title)
                 json.put("content", text)

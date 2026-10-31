@@ -97,7 +97,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
                 views.setViewVisibility(R.id.widget_list_view, View.GONE)
                 views.setTextViewText(R.id.widget_count, "Ultimi 0/3")
-                views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale ┬À 0 salvati")
+                views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale · 0 salvati")
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 return
             }
@@ -112,10 +112,10 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 val countLabel = root.optString("countLabel", "Ultimi $count/$maxItems")
                 val subtitleLabel = root.optString(
                     "subtitleLabel",
-                    "Memoria locale ┬À $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
+                    "Memoria locale · $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
                 )
                 val addBtnLabel = root.optString("addBtnLabel", "+ Salva")
-                val viewAllBtnLabel = root.optString("viewAllBtnLabel", "Visualizza tutto ÔåÆ")
+                val viewAllBtnLabel = root.optString("viewAllBtnLabel", "Visualizza tutto →")
                 val emptyLabel = root.optString("emptyLabel", null)
 
                 views.setTextViewText(R.id.widget_count, countLabel)
@@ -211,11 +211,11 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 row.setViewVisibility(R.id.row_img, View.GONE)
                 row.setViewVisibility(R.id.row_icon, View.VISIBLE)
                 val iconEmoji = when {
-                    type == "image" || mimeType.startsWith("image/") -> "­ƒû╝´©Å"
-                    mimeType.startsWith("audio/") -> "­ƒÄÖ´©Å"
-                    type == "link" -> "­ƒöù"
-                    type == "file" -> "­ƒôü"
-                    else -> "­ƒôØ"
+                    type == "image" || mimeType.startsWith("image/") -> "🖼️"
+                    mimeType.startsWith("audio/") -> "🎙️"
+                    type == "link" -> "🔗"
+                    type == "file" -> "📁"
+                    else -> "📝"
                 }
                 row.setTextViewText(R.id.row_icon, iconEmoji)
             }
@@ -241,7 +241,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                         list.add(t.replaceFirstChar { it.uppercase() })
                     }
                 }
-                if (list.isNotEmpty()) return list.joinToString(" ┬À ")
+                if (list.isNotEmpty()) return list.joinToString(" · ")
             }
             return when {
                 type == "image" || mimeType.startsWith("image/") -> "Immagine"

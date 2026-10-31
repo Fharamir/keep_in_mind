@@ -857,7 +857,7 @@ class AppAndExportView extends StatelessWidget {
   Widget _buildCreditsAndSupportCard(BuildContext context, ColorScheme scheme) {
     const mediaChannel = MethodChannel('com.example.keep_in_mind/media');
 
-    Future<void> handleTip(String productId, String title, String price) async {
+    Future<void> handleTip(String productId, String title) async {
       try {
         await mediaChannel.invokeMethod('launchPlayBillingTip', {
           'productId': productId,
@@ -876,20 +876,9 @@ class AppAndExportView extends StatelessWidget {
                 Expanded(child: Text(title)),
               ],
             ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  strings.symbolicSupportLabel(price),
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  strings.coffeeDialogBody,
-                  style: const TextStyle(fontSize: 13),
-                ),
-              ],
+            content: Text(
+              strings.coffeeDialogBody,
+              style: const TextStyle(fontSize: 13),
             ),
             actions: [
               FilledButton(
@@ -954,19 +943,13 @@ class AppAndExportView extends StatelessWidget {
                   avatar: const Text('☕'),
                   label: Text(strings.coffeeOption1),
                   onPressed: () =>
-                      handleTip('coffee_tip_1', strings.coffeeOption1, '1,99 €'),
+                      handleTip('coffee_tip_1', strings.coffeeOption1),
                 ),
                 ActionChip(
                   avatar: const Text('🥐'),
                   label: Text(strings.coffeeOption2),
-                  onPressed: () => handleTip(
-                      'coffee_tip_2', strings.coffeeOption2, '3,99 €'),
-                ),
-                ActionChip(
-                  avatar: const Text('🚀'),
-                  label: Text(strings.coffeeOption3),
-                  onPressed: () => handleTip(
-                      'coffee_tip_3', strings.coffeeOption3, '7,99 €'),
+                  onPressed: () =>
+                      handleTip('coffee_tip_2', strings.coffeeOption2),
                 ),
               ],
             ),

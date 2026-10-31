@@ -62,7 +62,7 @@ keep_in_mind/
 
 ```bash
 # Clone the repository
-git clone https://github.com/fharamir/keep_in_mind.git
+git clone https://github.com/Fharamir/keep_in_mind.git
 cd keep_in_mind
 
 # Install dependencies
