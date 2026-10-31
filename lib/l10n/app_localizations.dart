@@ -290,11 +290,10 @@ class AppLocalizations {
 
   String get creditsCardTitle => _t('creditsCardTitle');
   String get creditsDescription => _t('creditsDescription');
-  String get coffeeOption1 => _t('coffeeOption1');
-  String get coffeeOption2 => _t('coffeeOption2');
-
-  String coffeeThanks(String label) =>
-      _tParams('coffeeThanks', {'label': label});
+  String get btnSupportShare => _t('btnSupportShare');
+  String get btnSupportReview => _t('btnSupportReview');
+  String get supportShareSubject => _t('supportShareSubject');
+  String get supportShareBody => _t('supportShareBody');
 
   String get welcomeLinkTitle => _t('welcomeLinkTitle');
   String get welcomeLinkContent => _t('welcomeLinkContent');

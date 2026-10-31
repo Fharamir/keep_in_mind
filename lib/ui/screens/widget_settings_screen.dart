@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/memory_item.dart';
 import '../../services/storage_service.dart';
@@ -855,43 +856,38 @@ class AppAndExportView extends StatelessWidget {
   }
 
   Widget _buildCreditsAndSupportCard(BuildContext context, ColorScheme scheme) {
-    const mediaChannel = MethodChannel('com.example.keep_in_mind/media');
+    final strings = storage.l10n;
 
-    Future<void> handleTip(String productId, String title) async {
+    Future<void> handleShareApp() async {
       try {
-        await mediaChannel.invokeMethod('launchPlayBillingTip', {
-          'productId': productId,
-        });
-      } catch (_) {}
-
-      if (context.mounted) {
-        final strings = storage.l10n;
-        showDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.coffee_rounded, color: Colors.amber),
-                const SizedBox(width: 8),
-                Expanded(child: Text(title)),
-              ],
-            ),
-            content: Text(
-              strings.coffeeDialogBody,
-              style: const TextStyle(fontSize: 13),
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: Text(strings.actionClose),
-              ),
-            ],
+        await SharePlus.instance.share(
+          ShareParams(
+            text: strings.supportShareBody,
+            subject: strings.supportShareSubject,
           ),
         );
-      }
+      } catch (_) {}
     }
 
-    final strings = storage.l10n;
+    Future<void> handleReviewOrFeedback() async {
+      const playStoreUri = 'market://details?id=dev.fharamir.keepinmind';
+      const webUri =
+          'https://play.google.com/store/apps/details?id=dev.fharamir.keepinmind';
+
+      final marketUri = Uri.parse(playStoreUri);
+      final httpsUri = Uri.parse(webUri);
+
+      try {
+        if (await canLaunchUrl(marketUri)) {
+          await launchUrl(marketUri, mode: LaunchMode.externalApplication);
+          return;
+        }
+      } catch (_) {}
+
+      try {
+        await launchUrl(httpsUri, mode: LaunchMode.externalApplication);
+      } catch (_) {}
+    }
 
     return Card(
       elevation: 0,
@@ -909,12 +905,12 @@ class AppAndExportView extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.18),
+                    color: scheme.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: const Icon(
-                    Icons.coffee_rounded,
-                    color: Colors.amber,
+                  child: Icon(
+                    Icons.favorite_rounded,
+                    color: scheme.primary,
                     size: 20,
                   ),
                 ),
@@ -940,16 +936,14 @@ class AppAndExportView extends StatelessWidget {
               runSpacing: 8,
               children: [
                 ActionChip(
-                  avatar: const Text('☕'),
-                  label: Text(strings.coffeeOption1),
-                  onPressed: () =>
-                      handleTip('coffee_tip_1', strings.coffeeOption1),
+                  avatar: const Icon(Icons.share_rounded, size: 16),
+                  label: Text(strings.btnSupportShare),
+                  onPressed: handleShareApp,
                 ),
                 ActionChip(
-                  avatar: const Text('🥐'),
-                  label: Text(strings.coffeeOption2),
-                  onPressed: () =>
-                      handleTip('coffee_tip_2', strings.coffeeOption2),
+                  avatar: const Icon(Icons.star_rate_rounded, size: 16),
+                  label: Text(strings.btnSupportReview),
+                  onPressed: handleReviewOrFeedback,
                 ),
               ],
             ),

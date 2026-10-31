@@ -175,17 +175,6 @@ class MainActivity : FlutterActivity() {
                             result.error("AUDIO_SEEK_ERR", e.message, null)
                         }
                     }
-                    "launchPlayBillingTip" -> {
-                        val productId = call.argument<String>("productId") ?: "coffee_tip_1"
-                        // Native stub for in-app billing tip flow
-                        result.success(
-                            mapOf(
-                                "status" to "prepared",
-                                "productId" to productId,
-                                "note" to "Google Play Billing endpoint ready for Play Store release"
-                            )
-                        )
-                    }
                     "audioGetStatus" -> {
                         try {
                             val mp = mediaPlayer
