@@ -1,6 +1,6 @@
 # Privacy Policy for Keep in Mind
 
-*Last updated: November 2024 / Version 1.0.0*
+*Last updated: November 2026 / Version 1.0.0*
 
 **Keep in Mind** ("we", "our", or "the app") is developed as a **100% Local-First** productivity and self-sharing application. We believe strongly in user privacy, transparency, and data ownership.
 
