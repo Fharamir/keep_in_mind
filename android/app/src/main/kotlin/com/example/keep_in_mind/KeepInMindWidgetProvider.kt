@@ -140,7 +140,8 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                         for (i in 0 until count) {
                             val item = items.getJSONObject(i)
                             val rowView = buildRowRemoteView(context, item)
-                            builder.addItem(i.toLong(), rowView)
+                            val itemId = item.optString("id", "").ifEmpty { "$i" }
+                            builder.addItem(itemId.hashCode().toLong(), rowView)
                         }
                         views.setRemoteAdapter(R.id.widget_list_view, builder.build())
                     }

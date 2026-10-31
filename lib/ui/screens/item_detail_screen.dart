@@ -1075,7 +1075,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _current.fileName ?? 'File allegato',
+                        _current.fileName ?? widget.storage.l10n.fileAttachmentLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(

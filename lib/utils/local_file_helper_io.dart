@@ -27,8 +27,8 @@ class LocalFileHelper {
       if (sourcePath != null && sourcePath.isNotEmpty) {
         final srcFile = File(sourcePath);
         if (await srcFile.exists()) {
-          // Skip copy if already in the attachments directory
-          if (sourcePath.contains('keep_in_mind_attachments')) {
+          // Skip copy if already safely inside an attachments directory
+          if (await isSafeAttachmentPath(sourcePath)) {
             return sourcePath;
           }
           final copied = await srcFile.copy(destPath);
@@ -59,22 +59,37 @@ class LocalFileHelper {
     return null;
   }
 
-  /// Verifies that [path] resides strictly inside the app's local attachments directory
+  /// Verifies that [path] resides strictly inside an allowed app attachments directory
   /// and does not contain path traversal (e.g. '..').
   static Future<bool> isSafeAttachmentPath(String? path) async {
     if (path == null || path.trim().isEmpty) return false;
     final trimmed = path.trim();
     if (trimmed.contains('..')) return false;
     try {
-      final docsDir = await getApplicationDocumentsDirectory();
-      final attachmentsDir = Directory(
-        '${docsDir.path}${Platform.pathSeparator}keep_in_mind_attachments',
-      );
       final file = File(trimmed);
       if (!await file.exists()) return false;
       final fileCanonical = file.resolveSymbolicLinksSync().toLowerCase();
-      final dirCanonical = attachmentsDir.resolveSymbolicLinksSync().toLowerCase();
-      return fileCanonical.startsWith(dirCanonical);
+
+      final docsDir = await getApplicationDocumentsDirectory();
+      final docsAttach = Directory(
+        '${docsDir.path}${Platform.pathSeparator}keep_in_mind_attachments',
+      );
+      if (await docsAttach.exists()) {
+        final docsCanonical = '${docsAttach.resolveSymbolicLinksSync().toLowerCase()}${Platform.pathSeparator}';
+        if (fileCanonical.startsWith(docsCanonical)) return true;
+      }
+
+      // Check application support directory (filesDir on Android)
+      final supportDir = await getApplicationSupportDirectory();
+      final supportAttach = Directory(
+        '${supportDir.path}${Platform.pathSeparator}keep_in_mind_attachments',
+      );
+      if (await supportAttach.exists()) {
+        final supportCanonical = '${supportAttach.resolveSymbolicLinksSync().toLowerCase()}${Platform.pathSeparator}';
+        if (fileCanonical.startsWith(supportCanonical)) return true;
+      }
+
+      return false;
     } catch (_) {
       return false;
     }

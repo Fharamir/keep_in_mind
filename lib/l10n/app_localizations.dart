@@ -186,8 +186,8 @@ class AppLocalizations {
   String cannotOpenAttachment(String name) =>
       _tParams('cannotOpenAttachment', {'name': name});
 
-  String fileTooBigError(String maxMb) =>
-      _tParams('fileTooBigError', {'maxMb': maxMb});
+  String fileTooBigError(Object maxMb) =>
+      _tParams('fileTooBigError', {'maxMb': maxMb.toString()});
 
   String get addSheetTitle => _t('addSheetTitle');
   String get addSheetSubtitle => _t('addSheetSubtitle');

@@ -303,7 +303,16 @@ class MemoryItemCard extends StatelessWidget {
             final textToShare = item.content.isNotEmpty
                 ? '${item.title}\n${item.content}'
                 : item.title;
-            SharePlus.instance.share(ShareParams(text: textToShare));
+            if (item.filePath != null && item.filePath!.isNotEmpty) {
+              SharePlus.instance.share(
+                ShareParams(
+                  files: [XFile(item.filePath!)],
+                  text: textToShare,
+                ),
+              );
+            } else {
+              SharePlus.instance.share(ShareParams(text: textToShare));
+            }
           },
           icon: const Icon(Icons.share_outlined, size: 18),
           tooltip: strings.tooltipReshare,

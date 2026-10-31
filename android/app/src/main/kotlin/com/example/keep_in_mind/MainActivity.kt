@@ -594,54 +594,121 @@ class MainActivity : FlutterActivity() {
         try {
             val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val itemsJson = prefs.getString("flutter.kim_memory_items_v1", "[]") ?: "[]"
-            
-            val jsonArray = org.json.JSONArray(itemsJson)
-            
+            val existingArray = org.json.JSONArray(itemsJson)
+
+            val newItems = mutableListOf<org.json.JSONObject>()
             val itemsList = payload["items"]
             if (itemsList is List<*>) {
                 for (itemMap in itemsList) {
                     if (itemMap is Map<*, *>) {
                         @Suppress("UNCHECKED_CAST")
-                        val singleJson = convertMapToJsonObject(itemMap as Map<String, Any?>)
-                        jsonArray.put(0, singleJson)
+                        newItems.add(convertMapToJsonObject(itemMap as Map<String, Any?>))
                     }
                 }
             } else {
-                val singleJson = convertMapToJsonObject(payload)
-                jsonArray.put(0, singleJson)
+                newItems.add(convertMapToJsonObject(payload))
             }
 
-            prefs.edit().putString("flutter.kim_memory_items_v1", jsonArray.toString()).apply()
-
-            val widgetConfigJson = prefs.getString("flutter.kim_widget_config_v1", null)
-            var maxItems = 3
-            if (widgetConfigJson != null) {
-                try {
-                    val configObj = org.json.JSONObject(widgetConfigJson)
-                    maxItems = configObj.optInt("maxItems", 3)
-                } catch (_: Exception) {}
+            // Prepend new items without overwriting index 0
+            val combinedArray = org.json.JSONArray()
+            for (newItem in newItems) {
+                combinedArray.put(newItem)
+            }
+            for (i in 0 until existingArray.length()) {
+                combinedArray.put(existingArray.getJSONObject(i))
             }
 
-            val widgetPayloadObj = org.json.JSONObject()
-            widgetPayloadObj.put("maxItems", maxItems)
-            widgetPayloadObj.put("prioritizePinned", true)
-            widgetPayloadObj.put("totalCount", jsonArray.length())
-            
-            val widgetItemsArray = org.json.JSONArray()
-            val limit = jsonArray.length().coerceAtMost(maxItems)
-            for (i in 0 until limit) {
-                widgetItemsArray.put(jsonArray.getJSONObject(i))
-            }
-            widgetPayloadObj.put("items", widgetItemsArray)
-
-            val widgetPrefs = getSharedPreferences(KeepInMindWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
-            widgetPrefs.edit().putString(KeepInMindWidgetProvider.KEY_PAYLOAD, widgetPayloadObj.toString()).apply()
-            KeepInMindWidgetProvider.updateAllWidgets(applicationContext)
+            prefs.edit().putString("flutter.kim_memory_items_v1", combinedArray.toString()).apply()
+            syncWidgetNatively(prefs, combinedArray)
 
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
+    private fun syncWidgetNatively(prefs: android.content.SharedPreferences, allItems: org.json.JSONArray) {
+        try {
+            val configStr = prefs.getString("flutter.kim_widget_config_v1", null)
+            val cfg = if (configStr != null) try { org.json.JSONObject(configStr) } catch (_: Exception) { null } else null
+            val maxItems = cfg?.optInt("maxItems", 3)?.coerceIn(1, 5) ?: 3
+            val prioritizePinned = cfg?.optBoolean("prioritizePinned", true) ?: true
+            val filterType = cfg?.optString("filterType", null)
+            val filterTag = cfg?.optString("filterTag", null)?.lowercase()?.trim()
+            val showTags = cfg?.optBoolean("showTags", true) ?: true
+
+            val widgetPrefs = getSharedPreferences(KeepInMindWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
+            val oldStr = widgetPrefs.getString(KeepInMindWidgetProvider.KEY_PAYLOAD, null)
+            val oldObj = if (oldStr != null) try { org.json.JSONObject(oldStr) } catch (_: Exception) { null } else null
+            val addBtnLabel = oldObj?.optString("addBtnLabel", "+ Salva") ?: "+ Salva"
+            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto →") ?: "Visualizza tutto →"
+            val emptyLabel = oldObj?.optString("emptyLabel", null)
+
+            val candidates = mutableListOf<org.json.JSONObject>()
+            for (i in 0 until allItems.length()) {
+                val item = allItems.getJSONObject(i)
+                val type = item.optString("type", "text")
+                val tagsArr = item.optJSONArray("tags")
+                val tagsList = mutableListOf<String>()
+                if (tagsArr != null) {
+                    for (t in 0 until tagsArr.length()) tagsList.add(tagsArr.optString(t).lowercase().trim())
+                }
+                if (!filterTag.isNullOrBlank() && !tagsList.contains(filterTag)) continue
+                if (!filterType.isNullOrBlank() && type != filterType) continue
+                candidates.add(item)
+            }
+
+            if (prioritizePinned) {
+                candidates.sortWith { a, b ->
+                    val pA = a.optBoolean("isPinned", false)
+                    val pB = b.optBoolean("isPinned", false)
+                    if (pA != pB) (if (pA) -1 else 1) else b.optString("createdAt", "").compareTo(a.optString("createdAt", ""))
+                }
+            }
+
+            val widgetItemsArray = org.json.JSONArray()
+            val limit = candidates.size.coerceAtMost(maxItems)
+            for (i in 0 until limit) {
+                val orig = candidates[i]
+                val row = org.json.JSONObject().apply {
+                    put("id", orig.optString("id", ""))
+                    put("type", orig.optString("type", "text"))
+                    put("title", orig.optString("title", ""))
+                    val d = orig.optString("domain", "")
+                    val fn = orig.optString("fileName", "")
+                    val c = orig.optString("content", "")
+                    put("subtitle", if (d.isNotEmpty()) d else if (fn.isNotEmpty()) fn else if (c.length > 70) "${c.substring(0, 70)}…" else c)
+                    val fp = orig.optString("filePath", "")
+                    if (fp.isNotEmpty()) put("filePath", fp)
+                    val mt = orig.optString("mimeType", "")
+                    if (mt.isNotEmpty()) put("mimeType", mt)
+                    put("isPinned", orig.optBoolean("isPinned", false))
+                    put("createdAt", orig.optString("createdAt", ""))
+                    val tArr = orig.optJSONArray("tags")
+                    if (tArr != null && tArr.length() > 0) {
+                        val strList = (0 until tArr.length().coerceAtMost(3)).map { tArr.optString(it).replaceFirstChar { ch -> ch.uppercase() } }
+                        put("tags", strList.joinToString(" · "))
+                    }
+                }
+                widgetItemsArray.put(row)
+            }
+
+            val payloadObj = org.json.JSONObject().apply {
+                put("maxItems", maxItems)
+                put("prioritizePinned", prioritizePinned)
+                put("showTags", showTags)
+                put("totalCount", allItems.length())
+                put("items", widgetItemsArray)
+                put("countLabel", "Ultimi $limit/$maxItems")
+                put("subtitleLabel", "Memoria locale · ${allItems.length()} salvati")
+                put("addBtnLabel", addBtnLabel)
+                put("viewAllBtnLabel", viewAllBtnLabel)
+                if (emptyLabel != null) put("emptyLabel", emptyLabel)
+            }
+
+            widgetPrefs.edit().putString(KeepInMindWidgetProvider.KEY_PAYLOAD, payloadObj.toString()).apply()
+            KeepInMindWidgetProvider.updateAllWidgets(applicationContext)
+        } catch (_: Exception) {}
+    }
+
 
     private fun convertMapToJsonObject(map: Map<String, Any?>): org.json.JSONObject {
         val json = org.json.JSONObject()
@@ -652,8 +719,8 @@ class MainActivity : FlutterActivity() {
         json.put("createdAt", createdAt)
         json.put("isPinned", false)
         
-        val text = map["text"] as? String ?: ""
-        val subject = map["subject"] as? String ?: ""
+        val text = (map["text"] as? String ?: "").trim()
+        val subject = (map["subject"] as? String ?: "").trim()
         val filePath = map["filePath"] as? String
         val fileName = map["fileName"] as? String
         val mimeType = map["mimeType"] as? String
@@ -683,18 +750,45 @@ class MainActivity : FlutterActivity() {
             tagsArray.put(if (isImg) "immagine" else if (isAudio) "audio" else "file")
             json.put("tags", tagsArray)
         } else {
-            val isUrl = text.startsWith("http://") || text.startsWith("https://") || text.contains("://")
-            json.put("type", if (isUrl) "link" else "text")
-            json.put("title", if (subject.isNotEmpty()) subject else (if (text.length > 60) text.substring(0, 60) else text))
-            json.put("content", text)
-            val tagsArray = org.json.JSONArray()
-            if (isUrl) {
-                json.put("url", text)
-                tagsArray.put("link")
+            val urlRegex = Regex("""https?://[^\s]+""")
+            val match = urlRegex.find(text)
+            if (match != null) {
+                val url = match.value
+                val domain = try {
+                    java.net.URI(url).host?.removePrefix("www.")
+                } catch (_: Exception) {
+                    null
+                }
+                val remainingText = text.replace(url, "").trim()
+                val title = when {
+                    subject.isNotEmpty() -> subject
+                    remainingText.isNotEmpty() -> {
+                        val firstLine = remainingText.split("\n").first().trim()
+                        if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
+                    }
+                    !domain.isNullOrEmpty() -> domain
+                    else -> url
+                }
+                json.put("type", "link")
+                json.put("url", url)
+                if (!domain.isNullOrEmpty()) json.put("domain", domain)
+                json.put("title", title)
+                json.put("content", text)
+                val tagsArray = org.json.JSONArray().apply { put("link") }
+                json.put("tags", tagsArray)
             } else {
-                tagsArray.put("nota")
+                json.put("type", "text")
+                val title = if (subject.isNotEmpty()) {
+                    subject
+                } else {
+                    val firstLine = text.split("\n").first().trim()
+                    if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
+                }
+                json.put("title", if (title.isEmpty()) "Nota" else title)
+                json.put("content", text)
+                val tagsArray = org.json.JSONArray().apply { put("nota") }
+                json.put("tags", tagsArray)
             }
-            json.put("tags", tagsArray)
         }
         return json
     }

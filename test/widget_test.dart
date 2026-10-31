@@ -427,6 +427,38 @@ void main() {
       expect(corruptedItem.content, 'true');
       expect(corruptedItem.isPinned, isTrue);
     });
+
+    test('Import Backup JSON preserva base64Data se filePath non esiste sul dispositivo', () async {
+      SharedPreferences.setMockInitialValues({});
+      final storage = StorageService();
+      await storage.init();
+
+      const backupWithBase64 = '''
+      {
+        "items": [
+          {
+            "id": "item-with-base64",
+            "type": "image",
+            "title": "Foto ripristinata",
+            "content": "Nota con immagine",
+            "filePath": "/old/nonexistent/device/path/photo.png",
+            "fileName": "photo.png",
+            "mimeType": "image/png",
+            "base64Data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            "tags": ["immagine"]
+          }
+        ]
+      }
+      ''';
+
+      final result = await storage.importBackupJson(backupWithBase64);
+      expect(result['addedCount'], 1);
+
+      final imported = storage.allItems.firstWhere((e) => e.id == 'item-with-base64');
+      expect(imported.base64Data, isNotNull);
+      expect(imported.base64Data!.isNotEmpty, isTrue);
+    });
+
   });
 }
 

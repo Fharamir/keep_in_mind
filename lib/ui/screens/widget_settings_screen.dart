@@ -782,8 +782,8 @@ class AppAndExportView extends StatelessWidget {
                       if (bytes.length > 15 * 1024 * 1024) {
                         if (ctx.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('File troppo grande (max 15 MB)'),
+                            SnackBar(
+                              content: Text(strings.fileTooBigError(15)),
                               behavior: SnackBarBehavior.floating,
                             ),
                           );
@@ -797,10 +797,10 @@ class AppAndExportView extends StatelessWidget {
                       await processJsonString(jsonStr);
                     }
                   }
-                } catch (e) {
+                } catch (_) {
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
+                      SnackBar(content: Text(strings.filePickError)),
                     );
                   }
                 }

@@ -545,13 +545,26 @@ class StorageService extends ChangeNotifier {
         final importedItem = MemoryItem.fromJson(rawMap);
         if (importedItem.id.isEmpty && importedItem.title.isEmpty) continue;
 
-        // Verify attachment safety: ensure filePath is inside the app attachments folder
+        // Verify attachment safety: ensure filePath is inside the app attachments folder,
+        // or restore from base64Data if importing onto a new device/install.
         String? safeFilePath;
         if (importedItem.filePath != null && importedItem.filePath!.isNotEmpty) {
           final isSafe = await LocalFileHelper.isSafeAttachmentPath(importedItem.filePath);
           if (isSafe) {
             safeFilePath = importedItem.filePath;
           }
+        }
+        if (safeFilePath == null &&
+            importedItem.base64Data != null &&
+            importedItem.base64Data!.isNotEmpty) {
+          try {
+            final bytes = base64Decode(importedItem.base64Data!);
+            final name = importedItem.fileName ?? 'restored_attachment';
+            safeFilePath = await LocalFileHelper.persistFileLocally(
+              bytes: bytes,
+              fileName: name,
+            );
+          } catch (_) {}
         }
 
         // Sanitize imported tags
@@ -571,7 +584,9 @@ class StorageService extends ChangeNotifier {
           id: importedItem.id.isEmpty ? _uuid.v4() : importedItem.id,
           tags: cleanTags,
           filePath: safeFilePath,
-          clearAttachment: safeFilePath == null && importedItem.filePath != null,
+          clearAttachment: safeFilePath == null &&
+              importedItem.filePath != null &&
+              (importedItem.base64Data == null || importedItem.base64Data!.isEmpty),
         );
 
         // Match duplicates by ID, URL, or title and content
