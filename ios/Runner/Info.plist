@@ -66,5 +66,25 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.example.keepinmind</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>keepinmind</string>
+				<string>ShareMedia</string>
+			</array>
+		</dict>
+	</array>
+	<key>AppGroupId</key>
+	<string>group.com.example.keep_in_mind</string>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UISupportsDocumentBrowser</key>
+	<true/>
 </dict>
 </plist>

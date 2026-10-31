@@ -1,5 +1,5 @@
 name: keep_in_mind
-description: "A new Flutter project."
+description: "Keep in Mind - 100% Local-First Share-to-Self app with native home screen widget."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -30,14 +30,22 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  shared_preferences: ^2.5.3
+  path_provider: ^2.1.5
+  file_picker: ^10.1.2
+  url_launcher: ^6.3.1
+  share_plus: ^11.0.0
+  intl: ^0.20.2
+  uuid: ^4.5.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.2
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -49,6 +57,14 @@ dev_dependencies:
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
+flutter_launcher_icons:
+  image_path: "assets/icons/keep_in_mind.png"
+  android: true
+  ios: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#062357"
+  adaptive_icon_foreground: "assets/icons/keep_in_mind_foreground.png"
+
 # The following section is specific to Flutter packages.
 flutter:
 
@@ -58,9 +74,9 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/icons/keep_in_mind.png
+    - assets/icons/keep_in_mind_foreground.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
