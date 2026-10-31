@@ -57,6 +57,7 @@ class MainActivity : FlutterActivity() {
         if (isShareIntent(intent)) {
             super.onCreate(savedInstanceState)
             handleShareIntentDirectly(intent)
+            intent.action = Intent.ACTION_MAIN
             finish()
             return
         }
@@ -67,13 +68,15 @@ class MainActivity : FlutterActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
         
         if (isShareIntent(intent)) {
             handleShareIntentDirectly(intent)
-            finish()
+            intent.action = Intent.ACTION_MAIN
+            moveTaskToBack(true)
             return
         }
+
+        setIntent(intent)
 
         val payload = extractPayloadFromIntent(intent)
         if (payload != null) {
@@ -88,12 +91,39 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleShareIntentDirectly(intent: Intent) {
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val lang = getAppLanguage(prefs)
         val payload = extractPayloadFromIntent(intent) ?: return
+
+        val itemsList = payload["items"] as? List<*>
+        val anyTooLarge = (payload["fileTooLarge"] as? Boolean == true) ||
+                (itemsList?.any { (it as? Map<*, *>)?.get("fileTooLarge") == true } == true)
+
+        if (anyTooLarge) {
+            val maxMb = (payload["maxFileSizeMb"] as? Int)
+                ?: (itemsList?.firstNotNullOfOrNull { (it as? Map<*, *>)?.get("maxFileSizeMb") as? Int })
+                ?: getMaxFileSizeMb(prefs)
+            Toast.makeText(
+                applicationContext,
+                getLocalizedToastFileTooLarge(lang, maxMb),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         try {
-            savePayloadDirectly(payload)
-            Toast.makeText(applicationContext, "Salvato in Keep in Mind", Toast.LENGTH_SHORT).show()
+            savePayloadDirectly(payload, prefs, lang)
+            Toast.makeText(
+                applicationContext,
+                getLocalizedToastSaved(lang),
+                Toast.LENGTH_SHORT
+            ).show()
         } catch (e: Exception) {
-            Toast.makeText(applicationContext, "Errore durante il salvataggio", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                applicationContext,
+                getLocalizedToastError(lang),
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -272,6 +302,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleCapturePhoto(result: MethodChannel.Result) {
+        pendingMediaResult?.error("CANCELLED", "Operazione annullata", null)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -308,6 +339,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun handleStartAudioRecording(result: MethodChannel.Result) {
+        pendingMediaResult?.error("CANCELLED", "Operazione annullata", null)
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
             != PackageManager.PERMISSION_GRANTED
         ) {
@@ -342,6 +374,27 @@ class MainActivity : FlutterActivity() {
             recorder.setAudioSamplingRate(44100)
             recorder.setAudioEncodingBitRate(96000)
             recorder.setOutputFile(outFile.absolutePath)
+
+            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            val maxSeconds = try {
+                prefs.getLong("flutter.kim_max_audio_seconds_v1", 300L).toInt()
+            } catch (_: Exception) {
+                try { prefs.getInt("flutter.kim_max_audio_seconds_v1", 300) } catch (_: Exception) { 300 }
+            }
+            if (maxSeconds > 0) {
+                // Add a 2-second safety buffer so Dart's timer can stop recording cleanly first
+                recorder.setMaxDuration((maxSeconds + 2) * 1000)
+                recorder.setOnInfoListener { _, what, _ ->
+                    if (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED) {
+                        try {
+                            mediaRecorder?.stop()
+                        } catch (_: Exception) {
+                        }
+                        stopAndReleaseRecorder()
+                    }
+                }
+            }
+
             recorder.prepare()
             recorder.start()
 
@@ -492,7 +545,12 @@ class MainActivity : FlutterActivity() {
             val streamUri = getParcelableExtraCompat(intent, Intent.EXTRA_STREAM)
 
             if (streamUri != null) {
-                val fileMeta = copyUriToLocalStorage(streamUri, mimeType)
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val maxFileSizeMb = getMaxFileSizeMb(prefs)
+                val fileMeta = copyUriToLocalStorage(streamUri, mimeType, maxFileSizeMb)
+                if (fileMeta["fileTooLarge"] == true) {
+                    return fileMeta
+                }
                 return mapOf(
                     "text" to sharedText,
                     "subject" to sharedSubject,
@@ -520,16 +578,32 @@ class MainActivity : FlutterActivity() {
             val sharedSubject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
             val mimeType = intent.type
             if (!uris.isNullOrEmpty()) {
-                val items = uris.map { uri ->
-                    val fileMeta = copyUriToLocalStorage(uri, mimeType)
-                    mapOf(
-                        "text" to sharedText,
-                        "subject" to sharedSubject,
-                        "filePath" to fileMeta["filePath"],
-                        "fileName" to fileMeta["fileName"],
-                        "mimeType" to (fileMeta["mimeType"] ?: mimeType),
-                        "fileSizeBytes" to fileMeta["fileSizeBytes"],
-                        "source" to "Share to Self"
+                val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                val maxFileSizeMb = getMaxFileSizeMb(prefs)
+                val createdFiles = mutableListOf<File>()
+                val items = mutableListOf<Map<String, Any?>>()
+                for (uri in uris) {
+                    val fileMeta = copyUriToLocalStorage(uri, mimeType, maxFileSizeMb)
+                    if (fileMeta["fileTooLarge"] == true) {
+                        for (f in createdFiles) {
+                            try { if (f.exists()) f.delete() } catch (_: Exception) {}
+                        }
+                        return fileMeta
+                    }
+                    val path = fileMeta["filePath"] as? String
+                    if (path != null) {
+                        createdFiles.add(File(path))
+                    }
+                    items.add(
+                        mapOf(
+                            "text" to sharedText,
+                            "subject" to sharedSubject,
+                            "filePath" to path,
+                            "fileName" to fileMeta["fileName"],
+                            "mimeType" to (fileMeta["mimeType"] ?: mimeType),
+                            "fileSizeBytes" to fileMeta["fileSizeBytes"],
+                            "source" to "Share to Self"
+                        )
                     )
                 }
                 return mapOf("items" to items)
@@ -557,7 +631,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun copyUriToLocalStorage(uri: Uri, fallbackMime: String?): Map<String, Any?> {
+    private fun copyUriToLocalStorage(uri: Uri, fallbackMime: String?, maxFileSizeMb: Int = 0): Map<String, Any?> {
         var displayName = "allegato_${System.currentTimeMillis()}"
         var sizeBytes: Long? = null
         val resolvedMime = contentResolver.getType(uri) ?: fallbackMime
@@ -576,6 +650,10 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+            if (maxFileSizeMb > 0 && sizeBytes != null && sizeBytes > maxFileSizeMb * 1024L * 1024L) {
+                return mapOf("fileTooLarge" to true, "maxFileSizeMb" to maxFileSizeMb)
+            }
+
             val sanitized = displayName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
             val attachmentsDir = File(filesDir, "keep_in_mind_attachments")
             if (!attachmentsDir.exists()) {
@@ -583,10 +661,28 @@ class MainActivity : FlutterActivity() {
             }
             val destFile = File(attachmentsDir, "${System.currentTimeMillis()}_$sanitized")
 
+            val maxBytes = if (maxFileSizeMb > 0) maxFileSizeMb * 1024L * 1024L else Long.MAX_VALUE
+            var bytesRead = 0L
+            val buffer = ByteArray(8192)
+            var read: Int
+            var exceeded = false
+
             contentResolver.openInputStream(uri)?.use { input ->
                 FileOutputStream(destFile).use { output ->
-                    input.copyTo(output)
+                    while (input.read(buffer).also { read = it } >= 0) {
+                        bytesRead += read
+                        if (bytesRead > maxBytes) {
+                            exceeded = true
+                            break
+                        }
+                        output.write(buffer, 0, read)
+                    }
                 }
+            }
+
+            if (exceeded) {
+                if (destFile.exists()) destFile.delete()
+                return mapOf("fileTooLarge" to true, "maxFileSizeMb" to maxFileSizeMb)
             }
 
             val finalSize = sizeBytes ?: destFile.length()
@@ -606,9 +702,202 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun savePayloadDirectly(payload: Map<String, Any?>) {
+    private fun getMaxFileSizeMb(prefs: android.content.SharedPreferences): Int {
+        return try {
+            prefs.getLong("flutter.kim_max_file_size_mb_v1", 0L).toInt()
+        } catch (_: Exception) {
+            try {
+                prefs.getInt("flutter.kim_max_file_size_mb_v1", 0)
+            } catch (_: Exception) {
+                0
+            }
+        }
+    }
+
+    private fun getAppLanguage(prefs: android.content.SharedPreferences): String {
+        val override = prefs.getString("flutter.kim_language_override_v1", null)?.trim()?.lowercase()
+        if (!override.isNullOrEmpty()) {
+            return override
+        }
+        val sysLang = java.util.Locale.getDefault().language.lowercase()
+        return when (sysLang) {
+            "it", "es", "fr", "de", "pt", "zh" -> sysLang
+            else -> "en"
+        }
+    }
+
+    private fun getLocalizedToastSaved(lang: String): String {
+        return when (lang) {
+            "it" -> "Salvato in Keep in Mind"
+            "es" -> "Guardado en Keep in Mind"
+            "fr" -> "Enregistré dans Keep in Mind"
+            "de" -> "In Keep in Mind gespeichert"
+            "pt" -> "Salvo no Keep in Mind"
+            "zh" -> "已保存到 Keep in Mind"
+            else -> "Saved in Keep in Mind"
+        }
+    }
+
+    private fun getLocalizedToastFileTooLarge(lang: String, maxMb: Int): String {
+        return when (lang) {
+            "it" -> "File troppo grande (limite: $maxMb MB)"
+            "es" -> "Archivo demasiado grande (límite: $maxMb MB)"
+            "fr" -> "Fichier trop volumineux (limite : $maxMb Mo)"
+            "de" -> "Datei zu groß (Limit: $maxMb MB)"
+            "pt" -> "Arquivo muito grande (limite: $maxMb MB)"
+            "zh" -> "文件过大（限制：$maxMb MB）"
+            else -> "File too large (limit: $maxMb MB)"
+        }
+    }
+
+    private fun getLocalizedToastError(lang: String): String {
+        return when (lang) {
+            "it" -> "Errore durante il salvataggio"
+            "es" -> "Error al guardar"
+            "fr" -> "Erreur lors de l'enregistrement"
+            "de" -> "Fehler beim Speichern"
+            "pt" -> "Erro ao salvar"
+            "zh" -> "保存时出错"
+            else -> "Error while saving"
+        }
+    }
+
+    private fun getLocalizedDefaultTitle(lang: String, type: String): String {
+        return when (type) {
+            "image" -> when (lang) {
+                "it" -> "Immagine condivisa"
+                "es" -> "Imagen compartida"
+                "fr" -> "Image partagée"
+                "de" -> "Geteiltes Bild"
+                "pt" -> "Imagem compartilhada"
+                "zh" -> "分享的图片"
+                else -> "Shared image"
+            }
+            "file" -> when (lang) {
+                "it" -> "Allegato"
+                "es" -> "Adjunto"
+                "fr" -> "Pièce jointe"
+                "de" -> "Anhang"
+                "pt" -> "Anexo"
+                "zh" -> "附件"
+                else -> "Attachment"
+            }
+            else -> when (lang) {
+                "it" -> "Nota"
+                "es" -> "Nota"
+                "fr" -> "Note"
+                "de" -> "Notiz"
+                "pt" -> "Nota"
+                "zh" -> "便签"
+                else -> "Note"
+            }
+        }
+    }
+
+    private fun getLocalizedCountLabel(lang: String, count: Int, max: Int): String {
+        return when (lang) {
+            "it" -> "Ultimi $count/$max"
+            "es" -> "Recientes $count/$max"
+            "fr" -> "Récents $count/$max"
+            "de" -> "Neueste $count/$max"
+            "pt" -> "Recentes $count/$max"
+            "zh" -> "最近 $count/$max"
+            else -> "Recent $count/$max"
+        }
+    }
+
+    private fun getLocalizedSubtitleLabel(lang: String, total: Int): String {
+        return when (lang) {
+            "it" -> "Memoria locale · $total salvati"
+            "es" -> "Memoria local · $total guardados"
+            "fr" -> "Mémoire locale · $total enregistrés"
+            "de" -> "Lokaler Speicher · $total gespeichert"
+            "pt" -> "Memória local · $total salvos"
+            "zh" -> "本地存储 · $total 已保存"
+            else -> "Local memory · $total saved"
+        }
+    }
+
+    private fun getLocalizedAddBtn(lang: String): String {
+        return when (lang) {
+            "it" -> "+ Salva"
+            "es" -> "+ Guardar"
+            "fr" -> "+ Sauvegarder"
+            "de" -> "+ Speichern"
+            "pt" -> "+ Salvar"
+            "zh" -> "+ 保存"
+            else -> "+ Save"
+        }
+    }
+
+    private fun getLocalizedViewAllBtn(lang: String): String {
+        return when (lang) {
+            "it" -> "Visualizza tutto →"
+            "es" -> "Ver todo →"
+            "fr" -> "Tout voir →"
+            "de" -> "Alle anzeigen →"
+            "pt" -> "Ver tudo →"
+            "zh" -> "查看全部 →"
+            else -> "View all →"
+        }
+    }
+
+    private fun getLocalizedTagLabel(lang: String, tag: String): String {
+        val lower = tag.lowercase().trim()
+        return when (lower) {
+            "immagine", "image" -> when (lang) {
+                "it" -> "Immagine"
+                "es" -> "Imagen"
+                "fr" -> "Image"
+                "de" -> "Bild"
+                "pt" -> "Imagem"
+                "zh" -> "图片"
+                else -> "Image"
+            }
+            "audio" -> when (lang) {
+                "zh" -> "音频"
+                else -> "Audio"
+            }
+            "link" -> when (lang) {
+                "zh" -> "链接"
+                else -> "Link"
+            }
+            "file" -> when (lang) {
+                "es" -> "Archivo"
+                "fr" -> "Fichier"
+                "de" -> "Datei"
+                "zh" -> "文件"
+                else -> "File"
+            }
+            "nota", "note" -> when (lang) {
+                "it", "es", "pt" -> "Nota"
+                "fr" -> "Note"
+                "de" -> "Notiz"
+                "zh" -> "便签"
+                else -> "Note"
+            }
+            else -> lower.replaceFirstChar { ch -> ch.uppercase() }
+        }
+    }
+
+    private fun getLocalizedEmptyLabel(lang: String): String {
+        return when (lang) {
+            "it" -> "Nessun elemento nel widget.\nCondividi un link, testo o file con Keep in Mind!"
+            "es" -> "No hay elementos en el widget.\n¡Comparte un enlace, texto o archivo con Keep in Mind!"
+            "fr" -> "Aucun élément dans le widget.\nPartagez un lien, du texte ou un fichier avec Keep in Mind !"
+            "de" -> "Keine Elemente im Widget.\nTeilen Sie einen Link, Text oder eine Datei mit Keep in Mind!"
+            "pt" -> "Nenhum item no widget.\nCompartilhe um link, texto ou arquivo com o Keep in Mind!"
+            "zh" -> "微件中没有项目。\n与 Keep in Mind 分享链接、文本或文件！"
+            else -> "No items in widget.\nShare a link, text, or file with Keep in Mind!"
+        }
+    }
+
+    private fun savePayloadDirectly(
+        payload: Map<String, Any?>,
+        prefs: android.content.SharedPreferences,
+        lang: String
+    ) {
         try {
-            val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
             val itemsJson = prefs.getString("flutter.kim_memory_items_v1", "[]") ?: "[]"
             val existingArray = org.json.JSONArray(itemsJson)
 
@@ -618,30 +907,46 @@ class MainActivity : FlutterActivity() {
                 for (itemMap in itemsList) {
                     if (itemMap is Map<*, *>) {
                         @Suppress("UNCHECKED_CAST")
-                        newItems.add(convertMapToJsonObject(itemMap as Map<String, Any?>))
+                        newItems.add(convertMapToJsonObject(itemMap as Map<String, Any?>, lang))
                     }
                 }
             } else {
-                newItems.add(convertMapToJsonObject(payload))
+                newItems.add(convertMapToJsonObject(payload, lang))
             }
 
-            // Prepend new items without overwriting index 0
-            val combinedArray = org.json.JSONArray()
-            for (newItem in newItems) {
-                combinedArray.put(newItem)
-            }
+            val allList = mutableListOf<org.json.JSONObject>()
+            allList.addAll(newItems)
             for (i in 0 until existingArray.length()) {
-                combinedArray.put(existingArray.getJSONObject(i))
+                allList.add(existingArray.getJSONObject(i))
             }
 
-            prefs.edit().putString("flutter.kim_memory_items_v1", combinedArray.toString()).apply()
-            syncWidgetNatively(prefs, combinedArray)
+            allList.sortWith { a, b ->
+                val pA = a.optBoolean("isPinned", false)
+                val pB = b.optBoolean("isPinned", false)
+                if (pA != pB) {
+                    if (pA) -1 else 1
+                } else {
+                    b.optString("createdAt", "").compareTo(a.optString("createdAt", ""))
+                }
+            }
+
+            val combinedArray = org.json.JSONArray()
+            for (item in allList) {
+                combinedArray.put(item)
+            }
+
+            prefs.edit().putString("flutter.kim_memory_items_v1", combinedArray.toString()).commit()
+            syncWidgetNatively(prefs, combinedArray, lang)
 
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
-    private fun syncWidgetNatively(prefs: android.content.SharedPreferences, allItems: org.json.JSONArray) {
+    private fun syncWidgetNatively(
+        prefs: android.content.SharedPreferences,
+        allItems: org.json.JSONArray,
+        lang: String
+    ) {
         try {
             val configStr = prefs.getString("flutter.kim_widget_config_v1", null)
             val cfg = if (configStr != null) try { org.json.JSONObject(configStr) } catch (_: Exception) { null } else null
@@ -654,9 +959,9 @@ class MainActivity : FlutterActivity() {
             val widgetPrefs = getSharedPreferences(KeepInMindWidgetProvider.PREFS_NAME, Context.MODE_PRIVATE)
             val oldStr = widgetPrefs.getString(KeepInMindWidgetProvider.KEY_PAYLOAD, null)
             val oldObj = if (oldStr != null) try { org.json.JSONObject(oldStr) } catch (_: Exception) { null } else null
-            val addBtnLabel = oldObj?.optString("addBtnLabel", "+ Salva") ?: "+ Salva"
-            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto →") ?: "Visualizza tutto →"
-            val emptyLabel = oldObj?.optString("emptyLabel", null)
+            val addBtnLabel = oldObj?.optString("addBtnLabel", null) ?: getLocalizedAddBtn(lang)
+            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", null) ?: getLocalizedViewAllBtn(lang)
+            val emptyLabel = oldObj?.optString("emptyLabel", null) ?: getLocalizedEmptyLabel(lang)
 
             val candidates = mutableListOf<org.json.JSONObject>()
             for (i in 0 until allItems.length()) {
@@ -676,7 +981,15 @@ class MainActivity : FlutterActivity() {
                 candidates.sortWith { a, b ->
                     val pA = a.optBoolean("isPinned", false)
                     val pB = b.optBoolean("isPinned", false)
-                    if (pA != pB) (if (pA) -1 else 1) else b.optString("createdAt", "").compareTo(a.optString("createdAt", ""))
+                    if (pA != pB) {
+                        if (pA) -1 else 1
+                    } else {
+                        b.optString("createdAt", "").compareTo(a.optString("createdAt", ""))
+                    }
+                }
+            } else {
+                candidates.sortWith { a, b ->
+                    b.optString("createdAt", "").compareTo(a.optString("createdAt", ""))
                 }
             }
 
@@ -700,7 +1013,9 @@ class MainActivity : FlutterActivity() {
                     put("createdAt", orig.optString("createdAt", ""))
                     val tArr = orig.optJSONArray("tags")
                     if (tArr != null && tArr.length() > 0) {
-                        val strList = (0 until tArr.length().coerceAtMost(3)).map { tArr.optString(it).replaceFirstChar { ch -> ch.uppercase() } }
+                        val strList = (0 until tArr.length().coerceAtMost(3)).map {
+                            getLocalizedTagLabel(lang, tArr.optString(it))
+                        }
                         put("tags", strList.joinToString(" · "))
                     }
                 }
@@ -713,20 +1028,20 @@ class MainActivity : FlutterActivity() {
                 put("showTags", showTags)
                 put("totalCount", allItems.length())
                 put("items", widgetItemsArray)
-                put("countLabel", "Ultimi $limit/$maxItems")
-                put("subtitleLabel", "Memoria locale · ${allItems.length()} salvati")
+                put("countLabel", getLocalizedCountLabel(lang, limit, maxItems))
+                put("subtitleLabel", getLocalizedSubtitleLabel(lang, allItems.length()))
                 put("addBtnLabel", addBtnLabel)
                 put("viewAllBtnLabel", viewAllBtnLabel)
-                if (emptyLabel != null) put("emptyLabel", emptyLabel)
+                put("emptyLabel", emptyLabel)
             }
 
-            widgetPrefs.edit().putString(KeepInMindWidgetProvider.KEY_PAYLOAD, payloadObj.toString()).apply()
+            widgetPrefs.edit().putString(KeepInMindWidgetProvider.KEY_PAYLOAD, payloadObj.toString()).commit()
             KeepInMindWidgetProvider.updateAllWidgets(applicationContext)
         } catch (_: Exception) {}
     }
 
 
-    private fun convertMapToJsonObject(map: Map<String, Any?>): org.json.JSONObject {
+    private fun convertMapToJsonObject(map: Map<String, Any?>, lang: String): org.json.JSONObject {
         val json = org.json.JSONObject()
         val id = java.util.UUID.randomUUID().toString()
         val createdAt = java.time.Instant.now().toString()
@@ -758,7 +1073,8 @@ class MainActivity : FlutterActivity() {
             json.put("mimeType", mimeType)
             if (fileSizeBytes != null) json.put("fileSizeBytes", fileSizeBytes.toLong())
             
-            val resolvedTitle = if (subject.isNotEmpty()) subject else (if (text.isNotEmpty()) text else (fileName ?: "Allegato"))
+            val defaultTitle = getLocalizedDefaultTitle(lang, if (isImg) "image" else "file")
+            val resolvedTitle = if (subject.isNotEmpty()) subject else (if (text.isNotEmpty()) text else (fileName ?: defaultTitle))
             json.put("title", resolvedTitle)
             json.put("content", text)
             
@@ -800,7 +1116,8 @@ class MainActivity : FlutterActivity() {
                     val firstLine = text.split("\n").first().trim()
                     if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
                 }
-                json.put("title", if (title.isEmpty()) "Nota" else title)
+                val defaultTitle = getLocalizedDefaultTitle(lang, "text")
+                json.put("title", if (title.isEmpty()) defaultTitle else title)
                 json.put("content", text)
                 val tagsArray = org.json.JSONArray().apply { put("nota") }
                 json.put("tags", tagsArray)
@@ -828,6 +1145,7 @@ class LocalVideoViewFactory : PlatformViewFactory(StandardMessageCodec.INSTANCE)
 class LocalVideoPlatformView(context: Context, filePath: String) : PlatformView {
     private val container = FrameLayout(context)
     private val videoView = VideoView(context)
+    private var mediaController: MediaController? = null
 
     init {
         val params = FrameLayout.LayoutParams(
@@ -842,6 +1160,7 @@ class LocalVideoPlatformView(context: Context, filePath: String) : PlatformView 
             try {
                 val controller = MediaController(context)
                 controller.setAnchorView(videoView)
+                mediaController = controller
                 videoView.setMediaController(controller)
                 videoView.setVideoURI(Uri.fromFile(File(filePath)))
                 videoView.setOnPreparedListener { mp ->
@@ -857,6 +1176,8 @@ class LocalVideoPlatformView(context: Context, filePath: String) : PlatformView 
 
     override fun dispose() {
         try {
+            mediaController?.hide()
+            videoView.setMediaController(null)
             videoView.stopPlayback()
         } catch (_: Exception) {
         }

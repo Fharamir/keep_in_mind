@@ -55,7 +55,7 @@
         <receiver
             android:name=".KeepInMindWidgetProvider"
             android:exported="true"
-            android:label="Keep in Mind (Ultimi 1-5)">
+            android:label="@string/widget_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>

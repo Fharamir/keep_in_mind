@@ -300,13 +300,6 @@ class AppLocalizations {
   String get welcomeTextTitle => _t('welcomeTextTitle');
   String get welcomeTextContent => _t('welcomeTextContent');
 
-  String get shareTestToolsTitle => _t('shareTestToolsTitle');
-  String get btnSimulateShareLink => _t('btnSimulateShareLink');
-  String get btnSimulateShareNote => _t('btnSimulateShareNote');
-  String get simulatedLinkSubject => _t('simulatedLinkSubject');
-  String get simulatedNoteSubject => _t('simulatedNoteSubject');
-  String get simulatedNoteText => _t('simulatedNoteText');
-  String get simulatedShareSource => _t('simulatedShareSource');
   String get actionClose => _t('actionClose');
   String get actionPaste => _t('actionPaste');
   String get coffeeDialogBody => _t('coffeeDialogBody');

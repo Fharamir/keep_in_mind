@@ -366,11 +366,7 @@ void main() {
       );
       await tester.pump();
 
-      // I pulsanti di simulazione share non devono più essere presenti
-      expect(find.text(storage.l10n.btnSimulateShareLink), findsNothing);
-      expect(find.text(storage.l10n.btnSimulateShareNote), findsNothing);
-
-      // Il pulsante "Cancella tutti i dati" deve essere presente nel menu
+      // Il pulsante "Svuota Tutto" (Cancella tutti i dati) deve essere presente nel menu
       expect(find.text(storage.l10n.btnClearAll), findsOneWidget);
     });
 

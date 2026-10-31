@@ -428,7 +428,7 @@ class AppAndExportView extends StatelessWidget {
                     SharePlus.instance.share(
                       ShareParams(
                         text: json,
-                        subject: 'Keep in Mind Backup JSON',
+                        subject: 'Keep in Mind Backup',
                       ),
                     );
                   },
@@ -771,32 +771,28 @@ class AppAndExportView extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: () async {
                 try {
-                  final picked = await FilePicker.platform.pickFiles(
+                  final file = await FilePicker.pickFile(
                     type: FileType.custom,
                     allowedExtensions: ['json', 'txt'],
-                    withData: true,
                   );
-                  if (picked != null && picked.files.isNotEmpty) {
-                    final file = picked.files.first;
-                    final bytes = file.bytes;
-                    if (bytes != null) {
-                      if (bytes.length > 15 * 1024 * 1024) {
-                        if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(strings.fileTooBigError(15)),
-                              behavior: SnackBarBehavior.floating,
-                            ),
-                          );
-                        }
-                        return;
-                      }
-                      final jsonStr = utf8.decode(bytes);
+                  if (file != null) {
+                    final bytes = await file.readAsBytes();
+                    if (bytes.length > 15 * 1024 * 1024) {
                       if (ctx.mounted) {
-                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(strings.fileTooBigError(15)),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                       }
-                      await processJsonString(jsonStr);
+                      return;
                     }
+                    final jsonStr = utf8.decode(bytes);
+                    if (ctx.mounted) {
+                      Navigator.of(ctx).pop();
+                    }
+                    await processJsonString(jsonStr);
                   }
                 } catch (_) {
                   if (ctx.mounted) {
