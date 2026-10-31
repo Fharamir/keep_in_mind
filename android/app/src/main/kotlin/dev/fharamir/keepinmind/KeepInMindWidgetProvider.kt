@@ -1,4 +1,4 @@
-package com.example.keep_in_mind
+package dev.fharamir.keepinmind
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -34,8 +34,8 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
     companion object {
         const val PREFS_NAME = "keep_in_mind_widget_prefs"
         const val KEY_PAYLOAD = "widget_payload_json"
-        const val ACTION_OPEN_ITEM = "com.example.keep_in_mind.ACTION_OPEN_ITEM"
-        const val ACTION_QUICK_ADD = "com.example.keep_in_mind.ACTION_QUICK_ADD"
+        const val ACTION_OPEN_ITEM = "dev.fharamir.keepinmind.ACTION_OPEN_ITEM"
+        const val ACTION_QUICK_ADD = "dev.fharamir.keepinmind.ACTION_QUICK_ADD"
         const val EXTRA_ITEM_ID = "extra_item_id"
 
         fun updateAllWidgets(context: Context) {
@@ -97,7 +97,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
                 views.setViewVisibility(R.id.widget_list_view, View.GONE)
                 views.setTextViewText(R.id.widget_count, "Ultimi 0/3")
-                views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale · 0 salvati")
+                views.setTextViewText(R.id.widget_total_subtitle, "Memoria locale ┬À 0 salvati")
                 appWidgetManager.updateAppWidget(appWidgetId, views)
                 return
             }
@@ -112,10 +112,10 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 val countLabel = root.optString("countLabel", "Ultimi $count/$maxItems")
                 val subtitleLabel = root.optString(
                     "subtitleLabel",
-                    "Memoria locale · $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
+                    "Memoria locale ┬À $totalCount ${if (totalCount == 1) "salvato" else "salvati"}"
                 )
                 val addBtnLabel = root.optString("addBtnLabel", "+ Salva")
-                val viewAllBtnLabel = root.optString("viewAllBtnLabel", "Visualizza tutto →")
+                val viewAllBtnLabel = root.optString("viewAllBtnLabel", "Visualizza tutto ÔåÆ")
                 val emptyLabel = root.optString("emptyLabel", null)
 
                 views.setTextViewText(R.id.widget_count, countLabel)
@@ -126,6 +126,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                     views.setTextViewText(R.id.widget_empty, emptyLabel)
                 }
 
+                val showTags = root.optBoolean("showTags", true)
                 if (count == 0) {
                     views.setViewVisibility(R.id.widget_empty, View.VISIBLE)
                     views.setViewVisibility(R.id.widget_list_view, View.GONE)
@@ -139,7 +140,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                             .setViewTypeCount(1)
                         for (i in 0 until count) {
                             val item = items.getJSONObject(i)
-                            val rowView = buildRowRemoteView(context, item)
+                            val rowView = buildRowRemoteView(context, item, showTags)
                             val itemId = item.optString("id", "").ifEmpty { "$i" }
                             builder.addItem(itemId.hashCode().toLong(), rowView)
                         }
@@ -156,7 +157,8 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
 
         private fun buildRowRemoteView(
             context: Context,
-            item: JSONObject
+            item: JSONObject,
+            showTags: Boolean = true
         ): RemoteViews {
             val row = RemoteViews(context.packageName, R.layout.keep_in_mind_widget_row)
             val id = item.optString("id", "")
@@ -187,7 +189,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 row.setViewVisibility(R.id.row_subtitle, View.GONE)
             }
 
-            if (tagsDisplay.isNotEmpty()) {
+            if (showTags && tagsDisplay.isNotEmpty()) {
                 row.setViewVisibility(R.id.row_tags, View.VISIBLE)
                 row.setTextViewText(R.id.row_tags, tagsDisplay)
                 row.setTextColor(R.id.row_tags, colorForType(type, mimeType))
@@ -209,11 +211,11 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                 row.setViewVisibility(R.id.row_img, View.GONE)
                 row.setViewVisibility(R.id.row_icon, View.VISIBLE)
                 val iconEmoji = when {
-                    type == "image" || mimeType.startsWith("image/") -> "🖼️"
-                    mimeType.startsWith("audio/") -> "🎙️"
-                    type == "link" -> "🔗"
-                    type == "file" -> "📁"
-                    else -> "📝"
+                    type == "image" || mimeType.startsWith("image/") -> "­ƒû╝´©Å"
+                    mimeType.startsWith("audio/") -> "­ƒÄÖ´©Å"
+                    type == "link" -> "­ƒöù"
+                    type == "file" -> "­ƒôü"
+                    else -> "­ƒôØ"
                 }
                 row.setTextViewText(R.id.row_icon, iconEmoji)
             }
@@ -239,7 +241,7 @@ class KeepInMindWidgetProvider : AppWidgetProvider() {
                         list.add(t.replaceFirstChar { it.uppercase() })
                     }
                 }
-                if (list.isNotEmpty()) return list.joinToString(" · ")
+                if (list.isNotEmpty()) return list.joinToString(" ┬À ")
             }
             return when {
                 type == "image" || mimeType.startsWith("image/") -> "Immagine"

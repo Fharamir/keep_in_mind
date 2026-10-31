@@ -1,4 +1,4 @@
-package com.example.keep_in_mind
+package dev.fharamir.keepinmind
 
 import android.Manifest
 import android.app.Activity
@@ -21,6 +21,7 @@ import android.widget.Toast
 import android.widget.VideoView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -32,10 +33,10 @@ import java.io.File
 import java.io.FileOutputStream
 
 class MainActivity : FlutterActivity() {
-    private val shareChannelName = "com.example.keep_in_mind/share"
-    private val shareStreamName = "com.example.keep_in_mind/share_stream"
-    private val widgetChannelName = "com.example.keep_in_mind/widget"
-    private val mediaChannelName = "com.example.keep_in_mind/media"
+    private val shareChannelName = "dev.fharamir.keepinmind/share"
+    private val shareStreamName = "dev.fharamir.keepinmind/share_stream"
+    private val widgetChannelName = "dev.fharamir.keepinmind/widget"
+    private val mediaChannelName = "dev.fharamir.keepinmind/media"
 
     private var initialPayload: Map<String, Any?>? = null
     private var eventSink: EventChannel.EventSink? = null
@@ -45,6 +46,7 @@ class MainActivity : FlutterActivity() {
     private val reqImageCapture = 2003
 
     private var pendingMediaResult: MethodChannel.Result? = null
+    private var currentPhotoFile: File? = null
     private var mediaRecorder: MediaRecorder? = null
     private var currentAudioFile: File? = null
     private var mediaPlayer: MediaPlayer? = null
@@ -298,7 +300,17 @@ class MainActivity : FlutterActivity() {
     private fun launchCameraIntent(result: MethodChannel.Result) {
         try {
             pendingMediaResult = result
-            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+            val attachmentsDir = File(filesDir, "keep_in_mind_attachments")
+            if (!attachmentsDir.exists()) attachmentsDir.mkdirs()
+            val fileName = "foto_${System.currentTimeMillis()}.jpg"
+            val photoFile = File(attachmentsDir, fileName)
+            currentPhotoFile = photoFile
+            val photoUri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", photoFile)
+
+            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
+                addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
             startActivityForResult(takePictureIntent, reqImageCapture)
         } catch (e: Exception) {
             pendingMediaResult = null
@@ -417,6 +429,21 @@ class MainActivity : FlutterActivity() {
             val res = pendingMediaResult ?: return
             pendingMediaResult = null
             if (resultCode == Activity.RESULT_OK) {
+                val photoFile = currentPhotoFile
+                if (photoFile != null && photoFile.exists() && photoFile.length() > 0) {
+                    res.success(
+                        mapOf(
+                            "filePath" to photoFile.absolutePath,
+                            "fileName" to photoFile.name,
+                            "mimeType" to "image/jpeg",
+                            "fileSizeBytes" to photoFile.length()
+                        )
+                    )
+                    currentPhotoFile = null
+                    return
+                }
+
+                // Fallback: thumbnail from Intent data if camera didn't write to EXTRA_OUTPUT
                 val bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     data?.extras?.getParcelable("data", Bitmap::class.java)
                 } else {
@@ -426,9 +453,7 @@ class MainActivity : FlutterActivity() {
                 if (bitmap != null) {
                     try {
                         val attachmentsDir = File(filesDir, "keep_in_mind_attachments")
-                        if (!attachmentsDir.exists()) {
-                            attachmentsDir.mkdirs()
-                        }
+                        if (!attachmentsDir.exists()) attachmentsDir.mkdirs()
                         val fileName = "foto_${System.currentTimeMillis()}.jpg"
                         val destFile = File(attachmentsDir, fileName)
                         FileOutputStream(destFile).use { out ->
@@ -449,6 +474,8 @@ class MainActivity : FlutterActivity() {
                     res.success(null)
                 }
             } else {
+                currentPhotoFile?.delete()
+                currentPhotoFile = null
                 res.success(null)
             }
         }
@@ -639,7 +666,7 @@ class MainActivity : FlutterActivity() {
             val oldStr = widgetPrefs.getString(KeepInMindWidgetProvider.KEY_PAYLOAD, null)
             val oldObj = if (oldStr != null) try { org.json.JSONObject(oldStr) } catch (_: Exception) { null } else null
             val addBtnLabel = oldObj?.optString("addBtnLabel", "+ Salva") ?: "+ Salva"
-            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto →") ?: "Visualizza tutto →"
+            val viewAllBtnLabel = oldObj?.optString("viewAllBtnLabel", "Visualizza tutto ÔåÆ") ?: "Visualizza tutto ÔåÆ"
             val emptyLabel = oldObj?.optString("emptyLabel", null)
 
             val candidates = mutableListOf<org.json.JSONObject>()
@@ -675,7 +702,7 @@ class MainActivity : FlutterActivity() {
                     val d = orig.optString("domain", "")
                     val fn = orig.optString("fileName", "")
                     val c = orig.optString("content", "")
-                    put("subtitle", if (d.isNotEmpty()) d else if (fn.isNotEmpty()) fn else if (c.length > 70) "${c.substring(0, 70)}…" else c)
+                    put("subtitle", if (d.isNotEmpty()) d else if (fn.isNotEmpty()) fn else if (c.length > 70) "${c.substring(0, 70)}ÔÇª" else c)
                     val fp = orig.optString("filePath", "")
                     if (fp.isNotEmpty()) put("filePath", fp)
                     val mt = orig.optString("mimeType", "")
@@ -685,7 +712,7 @@ class MainActivity : FlutterActivity() {
                     val tArr = orig.optJSONArray("tags")
                     if (tArr != null && tArr.length() > 0) {
                         val strList = (0 until tArr.length().coerceAtMost(3)).map { tArr.optString(it).replaceFirstChar { ch -> ch.uppercase() } }
-                        put("tags", strList.joinToString(" · "))
+                        put("tags", strList.joinToString(" ┬À "))
                     }
                 }
                 widgetItemsArray.put(row)
@@ -698,7 +725,7 @@ class MainActivity : FlutterActivity() {
                 put("totalCount", allItems.length())
                 put("items", widgetItemsArray)
                 put("countLabel", "Ultimi $limit/$maxItems")
-                put("subtitleLabel", "Memoria locale · ${allItems.length()} salvati")
+                put("subtitleLabel", "Memoria locale ┬À ${allItems.length()} salvati")
                 put("addBtnLabel", addBtnLabel)
                 put("viewAllBtnLabel", viewAllBtnLabel)
                 if (emptyLabel != null) put("emptyLabel", emptyLabel)
@@ -764,7 +791,7 @@ class MainActivity : FlutterActivity() {
                     subject.isNotEmpty() -> subject
                     remainingText.isNotEmpty() -> {
                         val firstLine = remainingText.split("\n").first().trim()
-                        if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
+                        if (firstLine.length > 60) "${firstLine.substring(0, 59)}ÔÇª" else firstLine
                     }
                     !domain.isNullOrEmpty() -> domain
                     else -> url
@@ -782,7 +809,7 @@ class MainActivity : FlutterActivity() {
                     subject
                 } else {
                     val firstLine = text.split("\n").first().trim()
-                    if (firstLine.length > 60) "${firstLine.substring(0, 59)}…" else firstLine
+                    if (firstLine.length > 60) "${firstLine.substring(0, 59)}ÔÇª" else firstLine
                 }
                 json.put("title", if (title.isEmpty()) "Nota" else title)
                 json.put("content", text)
