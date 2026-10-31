@@ -62,7 +62,7 @@ flutter_launcher_icons:
   android: true
   ios: true
   min_sdk_android: 21
-  adaptive_icon_background: "#142B4B"
+  adaptive_icon_background: "#062357"
   adaptive_icon_foreground: "assets/icons/keep_in_mind_foreground.png"
 
 # The following section is specific to Flutter packages.

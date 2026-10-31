@@ -118,21 +118,10 @@ class HomeWidgetPreview extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Image.asset(
-            'assets/logo.png',
+            'assets/icons/keep_in_mind.png',
             width: 32,
             height: 32,
-            errorBuilder: (_, _, _) => Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: scheme.primaryContainer,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.psychology_alt_rounded,
-                size: 18,
-                color: scheme.onPrimaryContainer,
-              ),
-            ),
+            fit: BoxFit.cover,
           ),
         ),
         const SizedBox(width: 10),
