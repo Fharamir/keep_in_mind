@@ -50,3 +50,9 @@ app.*.map.json
 # Test outputs
 test_output.txt
 
+
+# Keystore and signing keys
+**/key.properties
+*.jks
+*.keystore
+
